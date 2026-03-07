@@ -1,0 +1,17 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+application = { path = "../application" }
+persistence = {path= "../persistence"}
+domain= {path = "../domain"}
+diesel = { version = "2.3", features = ["postgres", "uuid"] }
+diesel-async = { version = "0.7", features = ["postgres", "bb8"] }
+axum= "0.8.8"
+tokio = {version = "1.50.0", features = ["full"]}
+dotenvy = "0.15"
+anyhow = "1"
+serde = { version = "1.0.228", features = ["derive"] }
+uuid = { version = "1.22.0", features = ["v4"] }

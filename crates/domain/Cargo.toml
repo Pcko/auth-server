@@ -1,0 +1,9 @@
+[package]
+name = "domain"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+async-trait = "0.1.89"
+uuid = { version = "1.22.0", features = ["v4"] }
+time = "0.3.47"

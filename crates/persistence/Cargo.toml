@@ -1,0 +1,15 @@
+[package]
+name = "persistence"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+domain = { path = "../domain" }
+async-trait = "0.1"
+diesel = { version = "2.3", features = ["postgres", "uuid", "time"] }
+diesel-async = { version = "0.7", features = ["postgres", "bb8"] }
+serde = "1.0"
+dotenvy = "0.15"
+anyhow = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+time = { version = "0.3", features = ["serde", "formatting"] }
