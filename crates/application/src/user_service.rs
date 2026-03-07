@@ -1,12 +1,14 @@
 use domain::model::user::User;
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
+use std::sync::Arc;
 
-pub struct UserService<R: UserRepository> {
-    repo: R,
+#[derive(Clone)]
+pub struct UserService {
+    repo: Arc<dyn UserRepository>,
 }
 
-impl<R: UserRepository> UserService<R> {
-    pub fn new(repo: R) -> Self {
+impl UserService {
+    pub fn new(repo: Arc<dyn UserRepository>) -> Self {
         Self { repo }
     }
 

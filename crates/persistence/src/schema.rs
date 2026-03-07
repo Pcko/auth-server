@@ -7,5 +7,8 @@ diesel::table! {
         name -> Text,
         password_hash -> Text,
         created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+        is_allowed -> Bool,
+        is_mfa_enabled -> Bool,
     }
 }

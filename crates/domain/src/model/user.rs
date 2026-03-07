@@ -9,6 +9,12 @@ pub struct User {
     pub created_at: OffsetDateTime
 }
 
+pub struct NewUser {
+    pub name: String,
+    pub email: String,
+    pub password_hash: String,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct UserId(Uuid);
 

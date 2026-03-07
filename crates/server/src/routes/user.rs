@@ -6,10 +6,10 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use domain::repositories::user_repository::UserRepository;
-use persistence::repositories::postgres_user_repository::PostgresUserRepository;
+use persistence::repositories::postgres_user_repository::DieselUserRepository;
 
 async fn get_users(State(state): State<AppState>) -> Result<Json<Vec<UserDTO>>, StatusCode> {
-    let repo = PostgresUserRepository::new(state.db.clone());
+    let repo = DieselUserRepository::new(state.pool.clone());
 
     let users = repo
         .find_all()

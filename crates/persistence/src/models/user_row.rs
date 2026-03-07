@@ -1,5 +1,5 @@
 use diesel::{Insertable, Queryable, Selectable};
-use domain::model::user::{User, UserId};
+use domain::model::user::{NewUser, User, UserId};
 use uuid::Uuid;
 use crate::schema::user;
 use time::OffsetDateTime;
@@ -18,7 +18,6 @@ pub struct UserRow {
 #[derive(Debug,Insertable)]
 #[diesel(table_name = user)]
 pub struct NewUserRow<'a>{
-    pub id: Uuid,
     pub name: &'a str,
     pub email: &'a str,
     pub password_hash: &'a str,
@@ -36,12 +35,11 @@ impl From<UserRow> for User{
     }
 }
 
-impl<'a> From<&'a User> for NewUserRow<'a>{
-    fn from(usr: &'a User) -> NewUserRow<'a>{
+impl<'a> From<&'a NewUser> for NewUserRow<'a>{
+    fn from(usr: &'a NewUser) -> NewUserRow<'a>{
         Self{
-            id : usr.uid.as_uuid(),
-            name: &usr.uname,
-            email: &usr.umail,
+            name: &usr.name,
+            email: &usr.email,
             password_hash: &usr.password_hash
         }
     }

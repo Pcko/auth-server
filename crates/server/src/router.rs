@@ -1,13 +1,11 @@
-use axum::Router;
+use crate::routes::{auth, health, user};
 use crate::state::AppState;
-use crate::routes;
+use axum::Router;
 
 pub fn app(state: AppState) -> Router {
-    let user_router = routes::user::router();
-    let health_router = routes::health::router();
-
     Router::new()
-        .nest("/users", user_router)
-        .merge(health_router)
+        .nest("/users", user::router())
+        .nest("/auth", auth::router())
+        .merge(health::router())
         .with_state(state)
 }
