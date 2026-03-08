@@ -2,8 +2,9 @@ use crate::models::user_row::{NewUserRow, UserRow};
 use crate::schema;
 use crate::schema::user::dsl::*;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
-use diesel::{ExpressionMethods, OptionalExtension, SelectableHelper};
+use diesel::{debug_query, ExpressionMethods, OptionalExtension, SelectableHelper};
 use diesel::{Insertable, QueryDsl};
+use diesel::pg::Pg;
 use diesel_async::pooled_connection::bb8::Pool;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use domain::model::user::{NewUser, User, UserId};
@@ -47,14 +48,18 @@ impl UserRepository for DieselUserRepository {
             .await
             .map_err(|e| UserRepositoryError::Unexpected(e.to_string()))?;
 
-        let user_row = user
+        let query = user
             .filter(email.eq(user_email))
-            .select(UserRow::as_select())
+            .select(UserRow::as_select());
+
+        println!("SQL: {}", debug_query::<Pg, _>(&query));
+
+        let user_row = query
             .first::<UserRow>(&mut conn)
             .await
             .optional()
             .map_err(map_diesel_error)?;
-
+        
         Ok(user_row.map(Into::into))
     }
 

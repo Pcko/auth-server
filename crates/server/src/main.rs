@@ -1,11 +1,12 @@
+mod logging;
+
 use anyhow::Result;
 use application::auth_service::AuthService;
 use application::user_service::UserService;
-use axum::routing::post;
+use diesel::connection::set_default_instrumentation;
 use diesel_async::AsyncPgConnection;
 use diesel_async::pooled_connection::bb8::Pool;
 use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8};
-use domain::repositories::user_repository::UserRepository;
 use persistence::repositories::postgres_user_repository::DieselUserRepository;
 use server::router::app;
 use server::state::AppState;
@@ -19,8 +20,10 @@ async fn main() -> Result<()> {
     let addr = std::env::var("SERVER_ADDR").expect("SERVER_ADDR must be set");
 
     // DB Init
+    set_default_instrumentation(logging::diesel_logger)
+        .expect("failed to set default logging instance");
     let config = AsyncDieselConnectionManager::<AsyncPgConnection>::new(database_url);
-    let pool = bb8::Pool::builder().build(config).await?;
+    let pool = Pool::builder().build(config).await?;
 
     // Webserver Init
     let state = build_app(pool);

@@ -20,6 +20,7 @@ impl From<AuthError> for ApiError {
             AuthError::Validation(msg) => ApiError::Unauthorized("Invalid email or password".to_string()),
             AuthError::Repo(_) => ApiError::InternalServerError("Internal server error".to_string()),
             AuthError::Hash(_) => ApiError::InternalServerError("Internal server error".to_string()),
+            AuthError::HashParse(_) => ApiError::InternalServerError("Internal server error".to_string()),
         }
     }
 }

@@ -1,11 +1,10 @@
-use std::ptr::{null, null_mut};
 use argon2::password_hash::{generate_salt, phc::PasswordHash};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use domain::model::user::{NewUser, User};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
-use persistence::models::user_row::NewUserRow;
 use std::sync::Arc;
 use thiserror::Error;
+
 // DI per Domain UserRepository so the service doesn't know about diesel
 #[derive(Clone)]
 pub struct AuthService {
@@ -71,15 +70,13 @@ impl AuthService {
             .map_err(AuthError::Repo)?
             .ok_or(AuthError::InvalidCredentials("Email invalid".to_string()))?;
 
-        // Hash the sent pw
+        // parse the password from db
         let argon2 = Argon2::default();
-        let hashed_password = argon2
-            .hash_password(password.as_bytes())
-            .map_err(AuthError::Hash)?;
-        
-        // Hash comparison 
+        let parsed_hash = PasswordHash::new(&user.password_hash).map_err(AuthError::HashParse)?;
+
+        // comparison
         argon2
-            .verify_password(password.as_bytes(), &hashed_password)
+            .verify_password(password.as_bytes(), &parsed_hash)
             .map_err(AuthError::Hash)?;
 
         Ok(user)
@@ -95,7 +92,9 @@ pub enum AuthError {
     #[error("email already exists")]
     EmailAlreadyExists,
     #[error("repository error: {0}")]
-    Repo(UserRepositoryError),
+    Repo(#[from] UserRepositoryError),
     #[error("hash error: {0}")]
-    Hash(argon2::password_hash::Error),
+    Hash(#[from] argon2::password_hash::Error ),
+    #[error("hash parse error: {0}")]
+    HashParse(#[from] argon2::password_hash::phc::Error),
 }
