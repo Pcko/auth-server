@@ -16,7 +16,7 @@ async fn register(
 ) -> impl IntoResponse {
     state
         .auth_service
-        .register(user.username, user.password, user.email)
+        .register(user.email, user.username, user.password)
         .await
         .map_err(ApiError::from)
         .map(|_| StatusCode::CREATED)
