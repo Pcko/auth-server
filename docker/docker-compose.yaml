@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: auth_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: auth_server
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_server"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: builder
+    container_name: auth_server_migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/auth_server
+    command: ["diesel", "migration", "run"]
+
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: auth_server_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/auth_server
+      SERVER_ADDR: 0.0.0.0:3000
+      RUST_LOG: info
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
