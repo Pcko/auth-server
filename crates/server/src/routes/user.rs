@@ -1,4 +1,4 @@
-use crate::dto::user_dto::UserDTO;
+use crate::dto::user_dto::UserResponseDTO;
 use crate::state::AppState;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -6,9 +6,9 @@ use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use domain::repositories::user_repository::UserRepository;
-use persistence::repositories::postgres_user_repository::DieselUserRepository;
+use persistence::repositories::user_repository::DieselUserRepository;
 
-async fn get_users(State(state): State<AppState>) -> Result<Json<Vec<UserDTO>>, StatusCode> {
+async fn get_users(State(state): State<AppState>) -> Result<Json<Vec<UserResponseDTO>>, StatusCode> {
     let repo = DieselUserRepository::new(state.pool.clone());
 
     let users = repo
@@ -18,8 +18,8 @@ async fn get_users(State(state): State<AppState>) -> Result<Json<Vec<UserDTO>>, 
 
     let response = users
         .into_iter()
-        .map(|user| UserDTO::from(user))
-        .collect::<Vec<UserDTO>>();
+        .map(|user| UserResponseDTO::from(user))
+        .collect::<Vec<UserResponseDTO>>();
 
     Ok(Json(response))
 }

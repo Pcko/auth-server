@@ -1,5 +1,5 @@
 use crate::errors::api_error::ApiError;
-use application::auth_service::AuthError;
+use application::services::auth_service::AuthError;
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};

@@ -4,14 +4,14 @@ use serde::Serialize;
 use uuid::Uuid;
 
 #[derive(Serialize)]
-pub struct UserDTO {
+pub struct UserResponseDTO {
     pub id: Uuid,
     pub username: String,
     pub email: String,
     pub created_at: OffsetDateTime,
 }
 
-impl From<User> for UserDTO {
+impl From<User> for UserResponseDTO {
     fn from(user: User) -> Self {
         Self {
             id: user.uid.as_uuid(),
