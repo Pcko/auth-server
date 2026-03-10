@@ -3,14 +3,16 @@ use argon2::{PasswordHash, PasswordHasher};
 use base64::prelude::*;
 use rand::RngCore;
 
+#[derive(Debug)]
 pub struct TokenHandler {}
 
 impl TokenHandler {
     pub fn generate_session_token() -> String {
-        let mut bytes = [0u8; 32];
+        let mut bytes: [u8; 32] = [0u8; 32];
         rand::rng().fill_bytes(&mut bytes);
         BASE64_URL_SAFE_NO_PAD.encode(bytes)
     }
+
     pub fn hash_token(token: &String) -> PasswordHash {
         let argon2 = argon2::Argon2::default();
         argon2

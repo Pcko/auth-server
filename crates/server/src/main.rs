@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
         .expect("failed to set default logging instance");
     let db_config = AsyncDieselConnectionManager::<AsyncPgConnection>::new(&config.database_url);
     let pool = Pool::builder().build(db_config).await?;
-
+    
     // Webserver Init
     let listener = tokio::net::TcpListener::bind(&config.server_addr).await?;
     let state = build_app(pool, config);

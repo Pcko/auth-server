@@ -23,4 +23,5 @@ pub trait SessionRepository: Send + Sync {
         &self,
         token_hash: String,
     ) -> Result<Option<Session>, SessionRepositoryError>;
+  
 }
