@@ -135,14 +135,10 @@ impl SessionRepository for DieselSessionRepository {
             .await
             .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
 
-        let deleted = diesel::delete(sessions.filter(token_hash.eq(given_token_hash)))
+        diesel::delete(sessions.filter(token_hash.eq(given_token_hash)))
             .execute(&mut conn)
             .await
             .map_err(map_diesel_error)?;
-
-        if deleted == 0 {
-            return Err(SessionRepositoryError::NotFound);
-        }
 
         Ok(())
     }

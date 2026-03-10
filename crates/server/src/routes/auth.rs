@@ -1,16 +1,16 @@
 use crate::state::AppState;
 
-use crate::dto::auth_dto::{LoginDTO, LogoutDTO};
+use crate::dto::auth_dto::LoginDTO;
 use crate::dto::register_dto::RegisterDTO;
 use crate::dto::user_dto::UserResponseDTO;
 use crate::errors::api_error::ApiError;
 use application::utils::token_generator::TokenHandler;
 use axum::extract::State;
-use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
-use axum::response::{AppendHeaders, IntoResponse};
+use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use axum::routing::post;
-use axum::{Json, Router, response};
-use tower_cookies::cookie::{CookieJar, SameSite};
+use axum::{Json, Router};
+use tower_cookies::cookie::SameSite;
 use tower_cookies::{Cookie, Cookies};
 
 async fn register(
@@ -32,10 +32,10 @@ async fn login(
 ) -> Result<impl IntoResponse, ApiError> {
     let result = state
         .auth_service
-        .login(dto.email, dto.password)
+        .login(dto.email, dto.password, state.config.secret_key.as_ref())
         .await
         .map_err(ApiError::from)?;
-    
+
     // Set cookie with session token on client
     let mut cookie = Cookie::new("session", result.session_token);
     cookie.set_path("/");
@@ -54,21 +54,25 @@ async fn logout(
     State(state): State<AppState>,
     cookies: Cookies,
 ) -> Result<impl IntoResponse, ApiError> {
+    eprintln!("start");
     // see if cookie even has the right value
     if let Some(cookie) = cookies.get("session") {
-        let token_hash = TokenHandler::hash_token(&cookie.value().to_string());
+        let token_hash = TokenHandler::hash_token(
+            &cookie.value().to_string(),
+            state.config.secret_key.as_ref(),
+        );
         state
             .auth_service
             .logout(token_hash.to_string())
             .await
             .map_err(ApiError::from)?;
     }
-
+    eprintln!("mid");
     // Remove token from client cookies
     let mut removal = Cookie::new("session", "");
     removal.set_path("/");
     removal.make_removal();
-
+    eprintln!("end");
     cookies.add(removal);
 
     Ok(StatusCode::NO_CONTENT)

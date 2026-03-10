@@ -78,7 +78,12 @@ impl AuthService {
         Ok(user)
     }
 
-    pub async fn login(&self, email: String, password: String) -> Result<LoginResult, AuthError> {
+    pub async fn login(
+        &self,
+        email: String,
+        password: String,
+        secret: &[u8],
+    ) -> Result<LoginResult, AuthError> {
         if email.trim().is_empty() {
             return Err(AuthError::Validation("email is empty".into()));
         }
@@ -98,7 +103,7 @@ impl AuthService {
         // parse the password from db
         let argon2 = Argon2::default();
         let parsed_hash = PasswordHash::new(&user.password_hash).map_err(AuthError::HashParse)?;
-      
+
         // comparison
         argon2
             .verify_password(password.as_bytes(), &parsed_hash)
@@ -106,7 +111,7 @@ impl AuthService {
 
         // session params such as rnd token
         let token = TokenHandler::generate_session_token();
-        let hashed_token = TokenHandler::hash_token(&token);
+        let hashed_token = TokenHandler::hash_token(&token, secret);
         let expire_date = OffsetDateTime::now_utc() + Duration::minutes(30);
 
         // create session
@@ -141,8 +146,12 @@ impl AuthService {
         Ok(())
     }
 
-    pub async fn authenticate_session(&self, token: &String) -> Result<Session, AuthError> {
-        let hashed_token = TokenHandler::hash_token(token);
+    pub async fn authenticate_session(
+        &self,
+        token: &String,
+        secret: &[u8],
+    ) -> Result<Session, AuthError> {
+        let hashed_token = TokenHandler::hash_token(token, secret);
 
         let session = self
             .session_repo

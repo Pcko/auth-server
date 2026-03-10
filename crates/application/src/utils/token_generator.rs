@@ -1,10 +1,13 @@
-use crate::services::auth_service::AuthError;
 use argon2::{PasswordHash, PasswordHasher};
 use base64::prelude::*;
+use hmac::{Hmac, Mac};
 use rand::RngCore;
+use sha2::Sha256;
 
 #[derive(Debug)]
 pub struct TokenHandler {}
+
+type HmacSha256 = Hmac<Sha256>;
 
 impl TokenHandler {
     pub fn generate_session_token() -> String {
@@ -13,11 +16,9 @@ impl TokenHandler {
         BASE64_URL_SAFE_NO_PAD.encode(bytes)
     }
 
-    pub fn hash_token(token: &String) -> PasswordHash {
-        let argon2 = argon2::Argon2::default();
-        argon2
-            .hash_password(token.as_bytes())
-            .map_err(AuthError::Hash)
-            .unwrap()
+    pub fn hash_token(token: &str, secret:&[u8]) -> String {
+        let mut mac = HmacSha256::new_from_slice(secret).expect("valid key");
+        mac.update(token.as_bytes());
+        hex::encode(mac.finalize().into_bytes())
     }
 }

@@ -32,10 +32,10 @@ where
             .get("session")
             .map(|cookie| cookie.value().to_owned())
             .ok_or_else(|| ApiError::Unauthorized("missing session cookie".to_string()))?;
-        // get session per service
+    
         let session = app_state
             .auth_service
-            .authenticate_session(&token)
+            .authenticate_session(&token, app_state.config.secret_key.as_ref())
             .await
             .map_err(|_| ApiError::Unauthorized("invalid session".to_string()))?;
 
