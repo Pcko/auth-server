@@ -132,12 +132,9 @@ impl AuthService {
         })
     }
 
-    pub async fn logout(&self, session_id: String) -> Result<(), AuthError> {
-        // Convert String to Uuid
-        let sid = Uuid::try_parse(&session_id).map_err(|e| AuthError::Unexpected(e.to_string()))?;
-
+    pub async fn logout(&self, token_hash: String) -> Result<(), AuthError> {
         self.session_repo
-            .delete_by_id(SessionId::new(sid))
+            .delete_by_token_hash(token_hash)
             .await
             .map_err(AuthError::SessionRepo)?;
 

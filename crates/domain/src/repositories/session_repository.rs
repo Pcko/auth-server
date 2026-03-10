@@ -19,6 +19,7 @@ pub trait SessionRepository: Send + Sync {
     async fn insert(&self, session: NewSession) -> Result<Session, SessionRepositoryError>;
     async fn delete_by_id(&self, session_id: SessionId) -> Result<(), SessionRepositoryError>;
     async fn delete_by_uid(&self, uid: UserId) -> Result<(), SessionRepositoryError>;
+    async fn delete_by_token_hash(&self, token_hash: String) -> Result<(), SessionRepositoryError>;
     async fn find_by_token_hash(
         &self,
         token_hash: String,

@@ -128,6 +128,25 @@ impl SessionRepository for DieselSessionRepository {
         Ok(())
     }
 
+    async fn delete_by_token_hash(&self, given_token_hash: String) -> Result<(), SessionRepositoryError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
+
+        let deleted = diesel::delete(sessions.filter(token_hash.eq(given_token_hash)))
+            .execute(&mut conn)
+            .await
+            .map_err(map_diesel_error)?;
+
+        if deleted == 0 {
+            return Err(SessionRepositoryError::NotFound);
+        }
+
+        Ok(())
+    }
+
     async fn find_by_token_hash(
         &self,
         given_token_hash: String,
