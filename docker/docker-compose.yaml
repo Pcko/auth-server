@@ -43,10 +43,10 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/auth_server
-      SERVER_ADDR: 0.0.0.0:3000
+      SERVER_ADDR: 0.0.0.0:3001
       RUST_LOG: info
     ports:
-      - "3000:3000"
+      - "3001:3001"
     restart: unless-stopped
 
 volumes:

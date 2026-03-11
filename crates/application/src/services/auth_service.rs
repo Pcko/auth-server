@@ -148,7 +148,7 @@ impl AuthService {
 
     pub async fn authenticate_session(
         &self,
-        token: &String,
+        token: &str,
         secret: &[u8],
     ) -> Result<Session, AuthError> {
         let hashed_token = TokenHandler::hash_token(token, secret);

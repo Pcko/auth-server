@@ -78,9 +78,25 @@ async fn logout(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn authenticate(
+    State(state): State<AppState>,
+    cookies: Cookies,
+) -> Result<impl IntoResponse, ApiError> {
+    if let Some(cookie) = cookies.get("session") {
+        state
+            .auth_service
+            .authenticate_session(cookie.value(), state.config.secret_key.as_ref())
+            .await
+            .map_err(ApiError::from)?;
+    }
+
+    Ok(StatusCode::OK)
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/logout", post(logout))
+        .route("/authenticate", post(authenticate))
 }
