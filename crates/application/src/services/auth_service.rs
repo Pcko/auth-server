@@ -8,7 +8,7 @@ use domain::repositories::user_repository::{UserRepository, UserRepositoryError}
 use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 
 // DI per Domain UserRepository so the service doesn't know about diesel
 #[derive(Clone)]
@@ -34,6 +34,7 @@ impl AuthService {
         }
     }
 
+    #[instrument(name = "auth.register", skip(self,password), fields(email = %email, username = %email))]
     pub async fn register(
         &self,
         email: String,
@@ -86,6 +87,7 @@ impl AuthService {
         Ok(user)
     }
 
+    #[instrument(name = "auth.login", skip(self, password, secret), fields(email = %email))]
     pub async fn login(
         &self,
         email: String,
@@ -156,6 +158,7 @@ impl AuthService {
         })
     }
 
+    #[instrument(name = "auth.logout", skip(self, token_hash))]
     pub async fn logout(&self, token_hash: String) -> Result<(), AuthError> {
         self.session_repo
             .delete_by_token_hash(token_hash)
@@ -165,6 +168,7 @@ impl AuthService {
         Ok(())
     }
 
+    #[instrument(name = "auth.authenticate", skip(self, token, secret))]
     pub async fn authenticate_session(
         &self,
         token: &str,

@@ -27,7 +27,7 @@ async fn register(
 
 async fn login(
     State(state): State<AppState>,
-    mut cookies: Cookies,
+    cookies: Cookies,
     Json(dto): Json<LoginDTO>,
 ) -> Result<impl IntoResponse, ApiError> {
     let result = state
