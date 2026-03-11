@@ -1,3 +1,4 @@
+use std::io::Read;
 use crate::utils::token_generator::TokenHandler;
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
@@ -6,6 +7,7 @@ use domain::model::user::{NewUser, User};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
 use std::sync::Arc;
+use jsonwebtoken::{Algorithm, Header};
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 use tracing::{error, info, instrument};
@@ -23,6 +25,13 @@ pub struct LoginResult {
     pub expires_at: OffsetDateTime,
 }
 
+pub struct Claims {
+    iss: String,
+    sub: String,
+    iat: i64,
+    exp: i64,
+}
+
 impl AuthService {
     pub fn new(
         user_repo: Arc<dyn UserRepository>,
@@ -34,7 +43,8 @@ impl AuthService {
         }
     }
 
-    #[instrument(name = "auth.register", skip(self,password), fields(email = %email, username = %email))]
+    #[instrument(name = "auth.register", skip(self, password), fields(email = %email, username = %email
+    ))]
     pub async fn register(
         &self,
         email: String,
@@ -124,12 +134,22 @@ impl AuthService {
                 AuthError::InvalidCredentials("invalid email or password".to_string())
             })?;
 
-        // session params such as rnd token
-        let token = TokenHandler::generate_session_token();
-        let hashed_token = TokenHandler::hash_token(&token, secret);
-        let expire_date = OffsetDateTime::now_utc() + Duration::minutes(30);
+        // generate session and refresh token
+        let mut header = Header::new(Algorithm::RS256);
+        header.typ = Some("JWT".to_string());
 
-        // create session
+        let now = OffsetDateTime::now_utc();
+        let exp = (now + Duration::hours(1));
+        let secret_as_string = String::from_utf8(secret.to_vec()).map_err(|_| AuthError::Unexpected)?;
+        let claims = Claims {
+            iss: secret_as_string,
+            sub:
+            exp: exp.unix_timestamp(),
+
+        }
+
+
+        // create session and with refresh token
         let session = NewSession {
             uid: user.uid,
             expires_at: expire_date,
