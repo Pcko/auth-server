@@ -12,7 +12,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_server"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d auth_server" ]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -29,7 +29,7 @@ services:
     working_dir: /app
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/auth_server
-    command: ["diesel", "migration", "run"]
+    command: [ "diesel", "migration", "run" ]
 
   app:
     build:
@@ -41,12 +41,10 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    environment:
-      DATABASE_URL: postgres://postgres:postgres@postgres:5432/auth_server
-      SERVER_ADDR: 0.0.0.0:3001
-      RUST_LOG: info
+    env_file:
+      - ../.env
     ports:
-      - "3001:3001"
+      - "3000:3000"
     restart: unless-stopped
 
 volumes:

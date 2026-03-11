@@ -1,7 +1,6 @@
 use crate::middleware::auth_session::AuthSession;
 use crate::routes::{auth, health, user};
 use crate::state::AppState;
-use axum::handler::Handler;
 use axum::{Router, http, middleware};
 use tower::ServiceBuilder;
 use tower_cookies::CookieManagerLayer;

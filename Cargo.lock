@@ -923,6 +923,7 @@ dependencies = [
  "diesel-async",
  "domain",
  "time",
+ "tracing",
  "uuid",
 ]
 

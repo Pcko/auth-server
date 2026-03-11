@@ -9,6 +9,7 @@ use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::bb8::Pool;
 use diesel_async::pooled_connection::bb8::PooledConnection;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
+use tracing::error;
 use domain::model::user::{NewUser, User, UserId};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
 
@@ -117,6 +118,7 @@ impl UserRepository for DieselUserRepository {
    This function serves as Error translator so UserRepositoryError will be thrown
 */
 fn map_diesel_error(err: DieselError) -> UserRepositoryError {
+    error!("diesel user error: {err}");
     match err {
         DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => {
             UserRepositoryError::Conflict

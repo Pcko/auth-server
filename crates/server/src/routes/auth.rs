@@ -40,7 +40,7 @@ async fn login(
     let mut cookie = Cookie::new("session", result.session_token);
     cookie.set_path("/");
     cookie.set_http_only(true);
-    cookie.set_secure(true);
+    cookie.set_secure(!state.config.is_dev);
     cookie.set_same_site(SameSite::Lax);
     cookie.set_expires(result.expires_at);
 
@@ -69,6 +69,9 @@ async fn logout(
     // Remove token from client cookies
     let mut removal = Cookie::new("session", "");
     removal.set_path("/");
+    removal.set_http_only(true);
+    removal.set_same_site(SameSite::Lax);
+    removal.set_secure(!state.config.is_dev);
     removal.make_removal();
     cookies.add(removal);
 

@@ -25,6 +25,6 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/server /usr/local/bin/server
 
-EXPOSE 3001
+EXPOSE 3000
 
 CMD ["server"]
