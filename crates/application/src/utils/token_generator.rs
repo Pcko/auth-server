@@ -1,7 +1,7 @@
 use argon2::{PasswordHash, PasswordHasher};
 use base64::prelude::*;
 use hmac::{Hmac, Mac};
-use rand::RngCore;
+use rand::{Rng};
 use sha2::Sha256;
 
 #[derive(Debug)]

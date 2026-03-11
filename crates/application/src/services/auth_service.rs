@@ -5,11 +5,10 @@ use domain::model::session::{NewSession, Session, SessionId};
 use domain::model::user::{NewUser, User};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
-use std::error::Error;
 use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
-use uuid::Uuid;
+use tracing::{error, info};
 
 // DI per Domain UserRepository so the service doesn't know about diesel
 #[derive(Clone)]
@@ -42,17 +41,21 @@ impl AuthService {
         password: String,
     ) -> Result<User, AuthError> {
         if email.trim().is_empty() {
-            return Err(AuthError::Validation("email is empty".into()));
+            let msg: &'static str = "Email is empty";
+            error!(msg);
+            return Err(AuthError::Validation(msg.into()));
         }
 
         if username.trim().is_empty() {
-            return Err(AuthError::Validation("username is empty".into()));
+            let msg: &'static str = "Username is empty";
+            error!(msg);
+            return Err(AuthError::Validation(msg.into()));
         }
 
         if password.len() < 8 {
-            return Err(AuthError::Validation(
-                "password must be at least 8 characters".into(),
-            ));
+            let msg: &'static str = "Password is too short";
+            error!(msg);
+            return Err(AuthError::Validation(msg.into()));
         }
 
         // Hash the password
@@ -75,6 +78,11 @@ impl AuthService {
             .await
             .map_err(AuthError::UserRepo)?;
 
+        info!(
+            "User {0}: {1} created",
+            user.uid.as_uuid().to_string(),
+            user.uname
+        );
         Ok(user)
     }
 
@@ -85,12 +93,14 @@ impl AuthService {
         secret: &[u8],
     ) -> Result<LoginResult, AuthError> {
         if email.trim().is_empty() {
-            return Err(AuthError::Validation("email is empty".into()));
+            let msg: &'static str = "Email is empty";
+            error!(msg);
+            return Err(AuthError::Validation(msg.into()));
         }
         if password.len() < 8 {
-            return Err(AuthError::Validation(
-                "password must be at least 8 characters".into(),
-            ));
+            let msg: &'static str = "Password is too short";
+            error!(msg);
+            return Err(AuthError::Validation(msg.into()));
         }
         // find User if error during search -> internal else if not a user then user with email doesn't exist
         let user = self
@@ -107,7 +117,10 @@ impl AuthService {
         // comparison
         argon2
             .verify_password(password.as_bytes(), &parsed_hash)
-            .map_err(|_| AuthError::InvalidCredentials("invalid email or password".to_string()))?;
+            .map_err(|_| {
+                error!("User:{} Invalid password", user.uid.as_uuid().to_string());
+                AuthError::InvalidCredentials("invalid email or password".to_string())
+            })?;
 
         // session params such as rnd token
         let token = TokenHandler::generate_session_token();
@@ -129,6 +142,12 @@ impl AuthService {
             .insert(session)
             .await
             .map_err(AuthError::SessionRepo)?;
+
+        info!(
+            user_id = %user.uid.as_uuid().to_string(),
+            session_id = %new_session.id.as_uuid().to_string(),
+            "login succeeded"
+        );
 
         Ok(LoginResult {
             session_token: token,
@@ -158,9 +177,18 @@ impl AuthService {
             .find_by_token_hash(hashed_token.to_string())
             .await
             .map_err(AuthError::SessionRepo)?
-            .ok_or_else(|| AuthError::Authentication);
+            .ok_or_else(|| AuthError::Authentication)?;
 
-        Ok(session?)
+        if OffsetDateTime::now_utc() > session.expires_at {
+            Err(AuthError::Authentication)?;
+        }
+
+        info!(
+            "User {0}: {1}",
+            session.user_id.as_uuid(),
+            session.id.as_uuid().to_string()
+        );
+        Ok(session)
     }
 }
 

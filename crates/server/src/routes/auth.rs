@@ -54,7 +54,6 @@ async fn logout(
     State(state): State<AppState>,
     cookies: Cookies,
 ) -> Result<impl IntoResponse, ApiError> {
-    eprintln!("start");
     // see if cookie even has the right value
     if let Some(cookie) = cookies.get("session") {
         let token_hash = TokenHandler::hash_token(
@@ -67,12 +66,10 @@ async fn logout(
             .await
             .map_err(ApiError::from)?;
     }
-    eprintln!("mid");
     // Remove token from client cookies
     let mut removal = Cookie::new("session", "");
     removal.set_path("/");
     removal.make_removal();
-    eprintln!("end");
     cookies.add(removal);
 
     Ok(StatusCode::NO_CONTENT)
