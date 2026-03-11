@@ -6,4 +6,3 @@ pub struct RegisterDTO {
     pub email: String,
     pub password: String,
 }
-

@@ -8,7 +8,9 @@ use axum::{Json, Router};
 use domain::repositories::user_repository::UserRepository;
 use persistence::repositories::user_repository::DieselUserRepository;
 
-async fn get_users(State(state): State<AppState>) -> Result<Json<Vec<UserResponseDTO>>, StatusCode> {
+async fn get_users(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<UserResponseDTO>>, StatusCode> {
     let repo = DieselUserRepository::new(state.pool.clone());
 
     let users = repo

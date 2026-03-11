@@ -9,9 +9,9 @@ use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::bb8::Pool;
 use diesel_async::pooled_connection::bb8::PooledConnection;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
-use tracing::error;
 use domain::model::user::{NewUser, User, UserId};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
+use tracing::error;
 
 #[derive(Clone)]
 pub struct DieselUserRepository {
