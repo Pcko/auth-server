@@ -1,16 +1,17 @@
-use std::io::Read;
 use crate::utils::token_generator::TokenHandler;
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
-use domain::model::session::{NewSession, Session, SessionId};
+use domain::model::session::{NewSession, Session};
 use domain::model::user::{NewUser, User};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
+use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use jsonwebtoken::{Algorithm, Header};
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 
 // DI per Domain UserRepository so the service doesn't know about diesel
 #[derive(Clone)]
@@ -25,7 +26,9 @@ pub struct LoginResult {
     pub expires_at: OffsetDateTime,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
+    jti: String,
     iss: String,
     sub: String,
     iat: i64,
@@ -124,36 +127,43 @@ impl AuthService {
 
         // parse the password from db
         let argon2 = Argon2::default();
-        let parsed_hash = PasswordHash::new(&user.password_hash).map_err(AuthError::HashParse)?;
+        let parsed_pw_hash =
+            PasswordHash::new(&user.password_hash).map_err(AuthError::HashParse)?;
 
         // comparison
         argon2
-            .verify_password(password.as_bytes(), &parsed_hash)
+            .verify_password(password.as_bytes(), &parsed_pw_hash)
             .map_err(|_| {
                 error!("User:{} Invalid password", user.uid.as_uuid().to_string());
                 AuthError::InvalidCredentials("invalid email or password".to_string())
             })?;
 
         // generate session and refresh token
-        let mut header = Header::new(Algorithm::RS256);
-        header.typ = Some("JWT".to_string());
-
         let now = OffsetDateTime::now_utc();
-        let exp = (now + Duration::hours(1));
-        let secret_as_string = String::from_utf8(secret.to_vec()).map_err(|_| AuthError::Unexpected)?;
+        let exp = now + Duration::hours(1);
+        let mut header = Header::new(Algorithm::HS256);
+        header.typ = Some("JWT".to_string());
+        let jti = Uuid::new_v4();
+
+        // token claims (infos embedded in token)
         let claims = Claims {
-            iss: secret_as_string,
-            sub:
+            jti: jti.to_string(),
+            iss: "auth-server".to_string(),
+            sub: user.uid.as_uuid().to_string(),
             exp: exp.unix_timestamp(),
+            iat: now.unix_timestamp(),
+        };
 
-        }
-
+        let token = encode(&header, &claims, &EncodingKey::from_secret(secret))
+            .map_err(|_| AuthError::Unexpected("Token couldn't be generated".to_string()))?;
+        let token_hash = TokenHandler::hash_token(token.as_str(), secret);
 
         // create session and with refresh token
         let session = NewSession {
             uid: user.uid,
-            expires_at: expire_date,
-            token_hash: hashed_token.to_string(),
+            jti: jti,
+            expires_at: exp,
+            token_hash: token_hash,
             user_agent: None,
             ip_address: None,
             revoked_at: None,
@@ -173,7 +183,7 @@ impl AuthService {
 
         Ok(LoginResult {
             session_token: token,
-            expires_at: expire_date,
+            expires_at: exp,
             user: user,
         })
     }
@@ -209,7 +219,7 @@ impl AuthService {
 
         info!(
             "User {0}: {1}",
-            session.user_id.as_uuid(),
+            session.uid.as_uuid(),
             session.id.as_uuid().to_string()
         );
         Ok(session)

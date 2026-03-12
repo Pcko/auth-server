@@ -1,5 +1,7 @@
+use std::fmt;
 use time::OffsetDateTime;
 use uuid::Uuid;
+use serde::{Deserialize, Serialize};
 
 pub struct User {
     pub uid: UserId,

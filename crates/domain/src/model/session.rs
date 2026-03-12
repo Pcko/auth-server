@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 pub struct Session {
     pub id: SessionId,
-    pub user_id: UserId,
+    pub uid: UserId,
+    pub jti: Uuid,
     pub token_hash: String,
     pub created_at: OffsetDateTime,
     pub expires_at: OffsetDateTime,
@@ -16,6 +17,7 @@ pub struct Session {
 
 pub struct NewSession {
     pub uid: UserId,
+    pub jti: Uuid,
     pub token_hash: String,
     pub expires_at: OffsetDateTime,
     pub revoked_at: Option<OffsetDateTime>,

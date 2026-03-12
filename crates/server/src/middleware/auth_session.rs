@@ -42,7 +42,7 @@ where
 
         // Return data for routes
         Ok(AuthSession {
-            user_id: session.user_id.as_uuid(),
+            user_id: session.uid.as_uuid(),
             session_id: session.id.as_uuid(),
         })
     }

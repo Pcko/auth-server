@@ -29,6 +29,7 @@ dependencies = [
  "jsonwebtoken",
  "persistence",
  "rand 0.10.0",
+ "serde",
  "sha2",
  "thiserror",
  "time",
@@ -418,6 +419,7 @@ name = "domain"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
  "thiserror",
  "time",
  "uuid",
@@ -994,6 +996,7 @@ dependencies = [
  "diesel",
  "diesel-async",
  "domain",
+ "serde",
  "time",
  "tracing",
  "uuid",
