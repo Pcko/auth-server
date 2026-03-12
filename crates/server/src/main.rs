@@ -18,6 +18,7 @@ use tracing_appender::rolling;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
+use application::services::token_service::TokenService;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -52,7 +53,8 @@ fn build_app(pool: Pool<AsyncPgConnection>, config: AppConfig) -> AppState {
     let user_repo = Arc::new(DieselUserRepository::new(pool.clone()));
     let session_repo = Arc::new(DieselSessionRepository::new(pool.clone()));
     // we only clone the Arc it still points to the same repo
-    let auth_service = Arc::new(AuthService::new(user_repo.clone(), session_repo.clone()));
+    let token_service = Arc::new(TokenService::new());
+    let auth_service = Arc::new(AuthService::new(user_repo.clone(), session_repo.clone(), token_service.clone()));
     let user_service = Arc::new(UserService::new(user_repo.clone()));
 
     AppState {

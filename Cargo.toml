@@ -32,3 +32,4 @@ tower-http = { version = "0.6", features = ["trace", "request-id", "sensitive-he
 http = "1.4"
 tower = "0.5"
 jsonwebtoken = "10"
+secrecy = "0.10"

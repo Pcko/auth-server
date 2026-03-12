@@ -36,7 +36,7 @@ where
 
         let session = app_state
             .auth_service
-            .authenticate_session(&token, app_state.config.secret_key.as_ref())
+            .authenticate_session(&token, app_state.config.session_secret.as_ref())
             .await
             .map_err(|_| unauthorized())?;
 

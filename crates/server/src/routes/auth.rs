@@ -4,14 +4,17 @@ use crate::dto::auth_dto::LoginDTO;
 use crate::dto::register_dto::RegisterDTO;
 use crate::dto::user_dto::UserResponseDTO;
 use crate::errors::api_error::ApiError;
-use application::utils::token_generator::TokenHandler;
+use application::utils::token_handler::TokenHandler;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::post;
 use axum::{Json, Router};
+use diesel_async::RunQueryDsl;
 use tower_cookies::cookie::SameSite;
 use tower_cookies::{Cookie, Cookies};
+use tower_cookies::cookie::time::OffsetDateTime;
+use application::services::auth_service::LoginResult;
 
 async fn register(
     State(state): State<AppState>,
@@ -32,22 +35,33 @@ async fn login(
 ) -> Result<impl IntoResponse, ApiError> {
     let result = state
         .auth_service
-        .login(dto.email, dto.password, state.config.secret_key.as_ref())
+        /// TODO IMPLEMENT URL EXTRACTOR
+        .login(dto.email, dto.password, "url".to_string(), state.config.session_secret.as_ref(), state.config.refresh_secret.as_ref())
         .await
         .map_err(ApiError::from)?;
 
     // Set cookie with session token on client
-    let mut cookie = Cookie::new("session", result.session_token);
-    cookie.set_path("/");
-    cookie.set_http_only(true);
-    cookie.set_secure(!state.config.is_dev);
-    cookie.set_same_site(SameSite::Lax);
-    cookie.set_expires(result.expires_at);
-
-    cookies.add(cookie);
-
+    let mut session = Cookie::new("session", result.session_token);
+    configure_cookie(&state, result.session_expires_at, &mut session);
+    let mut refresh = Cookie::new("refresh", result.refresh_token.into());
+    configure_cookie(&state, result.refresh_expires_at, &mut refresh);
+    
+    cookies.add(session);
+    cookies.add(refresh);
     // Convert to UserDTO so I dont expose internal data
     Ok((StatusCode::OK, Json(UserResponseDTO::from(result.user))))
+}
+
+// 
+/**
+    Configures Cookies to be secure (for DRY)
+*/
+fn configure_cookie(state: &AppState, expires_at: OffsetDateTime, cookie: &mut Cookie) {
+    cookie.set_path("/");
+    cookie.set_http_only(true);
+    cookie.set_secure(state.config.is_dev);
+    cookie.set_same_site(SameSite::Lax);
+    cookie.set_expires(expires_at);
 }
 
 async fn logout(
@@ -58,7 +72,7 @@ async fn logout(
     if let Some(cookie) = cookies.get("session") {
         let token_hash = TokenHandler::hash_token(
             &cookie.value().to_string(),
-            state.config.secret_key.as_ref(),
+            state.config.session_secret.as_ref(),
         );
         state
             .auth_service
@@ -85,7 +99,7 @@ async fn authenticate(
     if let Some(cookie) = cookies.get("session") {
         state
             .auth_service
-            .authenticate_session(cookie.value(), state.config.secret_key.as_ref())
+            .authenticate_session(cookie.value(), state.config.session_secret.as_ref())
             .await
             .map_err(ApiError::from)?;
     }

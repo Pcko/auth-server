@@ -28,4 +28,8 @@ impl UserId {
     pub fn as_uuid(&self) -> Uuid {
         self.0
     }
+    
+    pub fn to_string(&self) -> String {
+        self.0.to_string()
+    }
 }
