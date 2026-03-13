@@ -1,22 +1,15 @@
 use crate::models::session_row::{NewSessionRow, SessionRow};
 use crate::schema;
-use crate::schema::sessions::dsl::{
-    sessions,
-    token_hash,
-    uid
-};
+use crate::schema::sessions::dsl::{sessions, token_hash, uid};
 
 use diesel::prelude::*;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use diesel_async::pooled_connection::bb8::Pool;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
-
 use domain::model::session::{NewSession, Session, SessionId};
 use domain::model::user::UserId;
-use domain::repositories::session_repository::{
-    SessionRepository,
-    SessionRepositoryError,
-};
+use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
+use tracing::error;
 
 #[derive(Clone)]
 pub struct DieselSessionRepository {
@@ -128,7 +121,10 @@ impl SessionRepository for DieselSessionRepository {
         Ok(())
     }
 
-    async fn delete_by_token_hash(&self, given_token_hash: String) -> Result<(), SessionRepositoryError> {
+    async fn delete_by_token_hash(
+        &self,
+        given_token_hash: String,
+    ) -> Result<(), SessionRepositoryError> {
         let mut conn = self
             .pool
             .get()
@@ -168,6 +164,7 @@ impl SessionRepository for DieselSessionRepository {
 This function serves as Error translator so UserRepositoryError will be thrown
 */
 fn map_diesel_error(err: DieselError) -> SessionRepositoryError {
+    error!("diesel session error: {err}");
     match err {
         DieselError::DatabaseError(DatabaseErrorKind::UniqueViolation, _) => {
             SessionRepositoryError::Conflict

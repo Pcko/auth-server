@@ -12,6 +12,6 @@ pub struct LoginResponseDTO {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct LogoutDTO{
+pub struct LogoutDTO {
     pub session_id: String,
 }

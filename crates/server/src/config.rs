@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use tracing::level_filters::LevelFilter;
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -6,6 +7,7 @@ pub struct AppConfig {
     pub database_url: String,
     pub is_dev: bool,
     pub secret_key: Vec<u8>,
+    pub log_level: LevelFilter,
 }
 
 impl AppConfig {
@@ -13,7 +15,7 @@ impl AppConfig {
         dotenvy::dotenv().ok();
 
         let server_addr = std::env::var("SERVER_ADDR").context("SERVER_ADDR must be set")?;
-        
+
         let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
 
         // Dev env to evade security features
@@ -25,11 +27,16 @@ impl AppConfig {
         let secret_key = std::env::var("SECRET_KEY").context("SECRET_KEY must be set")?;
         let secret_key = secret_key.as_bytes().to_vec();
 
+        let log_level = std::env::var("LOG_LEVEL")
+            .unwrap_or_else(|_| "info".to_string())
+            .parse::<LevelFilter>()?;
+
         Ok(Self {
             server_addr,
             database_url,
             is_dev,
-            secret_key
+            secret_key,
+            log_level,
         })
     }
 }

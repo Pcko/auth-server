@@ -1,12 +1,12 @@
-use uuid::Uuid;
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 pub struct User {
     pub uid: UserId,
     pub uname: String,
     pub umail: String,
     pub password_hash: String,
-    pub created_at: OffsetDateTime
+    pub created_at: OffsetDateTime,
 }
 
 pub struct NewUser {
@@ -19,10 +19,10 @@ pub struct NewUser {
 pub struct UserId(Uuid);
 
 impl UserId {
-    pub fn new(value : Uuid) -> Self {
+    pub fn new(value: Uuid) -> Self {
         Self(value)
     }
-    
+
     pub fn as_uuid(&self) -> Uuid {
         self.0
     }

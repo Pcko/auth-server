@@ -12,8 +12,8 @@ pub enum UserRepositoryError {
 }
 
 /**
-    Generic UserRepository 
- */
+   Generic UserRepository
+*/
 #[async_trait::async_trait]
 pub trait UserRepository: Send + Sync {
     async fn find_by_id(&self, id: UserId) -> Result<Option<User>, UserRepositoryError>;

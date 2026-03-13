@@ -27,7 +27,7 @@ async fn register(
 
 async fn login(
     State(state): State<AppState>,
-    mut cookies: Cookies,
+    cookies: Cookies,
     Json(dto): Json<LoginDTO>,
 ) -> Result<impl IntoResponse, ApiError> {
     let result = state
@@ -40,7 +40,7 @@ async fn login(
     let mut cookie = Cookie::new("session", result.session_token);
     cookie.set_path("/");
     cookie.set_http_only(true);
-    cookie.set_secure(true);
+    cookie.set_secure(!state.config.is_dev);
     cookie.set_same_site(SameSite::Lax);
     cookie.set_expires(result.expires_at);
 
@@ -54,7 +54,6 @@ async fn logout(
     State(state): State<AppState>,
     cookies: Cookies,
 ) -> Result<impl IntoResponse, ApiError> {
-    eprintln!("start");
     // see if cookie even has the right value
     if let Some(cookie) = cookies.get("session") {
         let token_hash = TokenHandler::hash_token(
@@ -67,12 +66,13 @@ async fn logout(
             .await
             .map_err(ApiError::from)?;
     }
-    eprintln!("mid");
     // Remove token from client cookies
     let mut removal = Cookie::new("session", "");
     removal.set_path("/");
+    removal.set_http_only(true);
+    removal.set_same_site(SameSite::Lax);
+    removal.set_secure(!state.config.is_dev);
     removal.make_removal();
-    eprintln!("end");
     cookies.add(removal);
 
     Ok(StatusCode::NO_CONTENT)
