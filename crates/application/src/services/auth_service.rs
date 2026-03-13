@@ -1,15 +1,17 @@
-use crate::services::token_service::TokenService;
+use crate::services::token_service::{TokenError, TokenService};
 use crate::utils::token_handler::TokenHandler;
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use domain::model::Claims::Claims;
 use domain::model::session::NewSession;
 use domain::model::user::{NewUser, User};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
+use tracing::log::Level::Info;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 
@@ -34,7 +36,16 @@ pub struct VerifyResult {
     pub sid: Uuid,
 }
 
+pub struct RefreshResult {
+    pub access_token: String,
+    pub access_expires_at: OffsetDateTime,
+    // TODO wird mit refresh token rotation implementiert
+    pub refresh_token: Option<SecretString>,
+}
+
 const ISSUER_NAME: &'static str = "AUTH_SERVER";
+const ACCESS_TOKEN_DURATION: Duration = Duration::hours(1);
+const REFRESH_TOKEN_DURATION: Duration = Duration::days(30);
 
 impl AuthService {
     pub fn new(
@@ -144,7 +155,7 @@ impl AuthService {
         let refresh_token = self.token_service.generate_refresh_token();
         let refresh_token_hash =
             TokenHandler::hash_token(refresh_token.expose_secret(), refresh_secret);
-        let refresh_expires_at = OffsetDateTime::now_utc() + Duration::days(30);
+        let refresh_expires_at = OffsetDateTime::now_utc() + REFRESH_TOKEN_DURATION;
 
         // create session and with refresh token
         let session = NewSession {
@@ -170,7 +181,7 @@ impl AuthService {
                 user.uid.as_uuid(),
                 aud,
                 new_session.id.as_uuid(),
-                Duration::hours(1),
+                ACCESS_TOKEN_DURATION,
                 access_secret,
             )
             .map_err(|_| AuthError::InvalidCredentials("invalid token".to_string()))?;
@@ -190,8 +201,13 @@ impl AuthService {
         })
     }
 
-    #[instrument(name = "auth.logout", skip(self, token_hash))]
-    pub async fn logout(&self, token_hash: String) -> Result<(), AuthError> {
+    #[instrument(name = "auth.logout", skip(self, token, secret))]
+    pub async fn logout(&self, token: String, secret: &[u8]) -> Result<(), AuthError> {
+        // TODO use sid in access token to find session first for consistency
+        let token_hash = TokenHandler::hash_token(
+            &token,
+            secret,
+        );
         self.session_repo
             .delete_by_token_hash(token_hash)
             .await
@@ -206,28 +222,66 @@ impl AuthService {
         access_token: &str,
         secret: &[u8],
     ) -> Result<VerifyResult, AuthError> {
-        let result = self.token_service.verify_access_token(access_token, secret);
-
-        if (result.is_err()) {
-            return Err(AuthError::InvalidCredentials(
-                "invalid access token".to_string(),
-            ));
-        }
-
-        let claims = result.unwrap();
+        let claims = self
+            .token_service
+            .verify_access_token(access_token, secret)
+            .map_err(|_| AuthError::InvalidCredentials("invalid access token".to_string()))?;
 
         if OffsetDateTime::now_utc() > claims.exp {
-            Err(AuthError::Authentication)?;
+            return Err(AuthError::Authentication);
         }
 
-        if !claims.iss.eq(ISSUER_NAME) {
-            Err(AuthError::Authentication)?;
+        if claims.iss != ISSUER_NAME {
+            return Err(AuthError::Authentication);
         }
 
         info!("User {0}: {1}", claims.sub, claims.jti);
+
         Ok(VerifyResult {
             uid: claims.sub,
             sid: claims.sid,
+        })
+    }
+    #[instrument(name = "auth.refresh_token", skip(self, refresh_token, refresh_secret))]
+    pub async fn refresh_token(
+        &self,
+        aud: String,
+        refresh_token: &str,
+        refresh_secret: &[u8],
+        access_secret: &[u8],
+    ) -> Result<RefreshResult, AuthError> {
+        let hashed_token = TokenHandler::hash_token(refresh_token, refresh_secret);
+
+        let session_option = self
+            .session_repo
+            .find_by_token_hash(hashed_token)
+            .await
+            .map_err(AuthError::SessionRepo)?;
+
+        if !session_option.is_some() {
+            return Err(AuthError::Authentication);
+        }
+
+        let session = session_option.unwrap();
+
+        let (access_token, claims) = self
+            .token_service
+            .generate_access_token(
+                ISSUER_NAME.to_string(),
+                session.uid.as_uuid(),
+                aud,
+                session.id.as_uuid(),
+                ACCESS_TOKEN_DURATION,
+                access_secret,
+            )
+            .map_err(AuthError::Token)?;
+
+        info!("Token refreshed: {0} {1}", session.id, session.uid);
+
+        Ok(RefreshResult {
+            access_token,
+            access_expires_at: claims.exp,
+            refresh_token: None,
         })
     }
 }
@@ -252,4 +306,6 @@ pub enum AuthError {
     Authentication,
     #[error("unexpected error: {0}")]
     Unexpected(String),
+    #[error("token error: {0}")]
+    Token(#[from] TokenError),
 }

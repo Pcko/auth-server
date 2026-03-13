@@ -24,3 +24,4 @@ tower-http.workspace = true
 http.workspace = true
 tower.workspace = true
 jsonwebtoken.workspace = true
+secrecy.workspace = true

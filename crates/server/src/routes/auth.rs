@@ -8,13 +8,12 @@ use application::utils::token_handler::TokenHandler;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
-use diesel_async::RunQueryDsl;
+use secrecy::{ExposeSecret, SecretString};
 use tower_cookies::cookie::SameSite;
-use tower_cookies::{Cookie, Cookies};
 use tower_cookies::cookie::time::OffsetDateTime;
-use application::services::auth_service::LoginResult;
+use tower_cookies::{Cookie, Cookies};
 
 async fn register(
     State(state): State<AppState>,
@@ -35,15 +34,21 @@ async fn login(
 ) -> Result<impl IntoResponse, ApiError> {
     let result = state
         .auth_service
-        /// TODO IMPLEMENT URL EXTRACTOR
-        .login(dto.email, dto.password, "url".to_string(), state.config.access_secret.as_ref(), state.config.refresh_secret.as_ref())
+        // TODO IMPLEMENT URL EXTRACTOR for aud
+        .login(
+            dto.email,
+            dto.password,
+            "url".to_string(),
+            state.config.access_secret.as_ref(),
+            state.config.refresh_secret.as_ref(),
+        )
         .await
         .map_err(ApiError::from)?;
 
     // Set cookie with session token on client
     let mut session = Cookie::new("access", result.access_token);
     configure_cookie(&state, result.access_expires_at, &mut session);
-    let mut refresh = Cookie::new("refresh", result.refresh_token.into());
+    let mut refresh = Cookie::new("refresh", result.refresh_token.expose_secret().to_owned());
     configure_cookie(&state, result.refresh_expires_at, &mut refresh);
 
     cookies.add(session);
@@ -52,7 +57,83 @@ async fn login(
     Ok((StatusCode::OK, Json(UserResponseDTO::from(result.user))))
 }
 
-// 
+async fn logout(
+    State(state): State<AppState>,
+    cookies: Cookies,
+) -> Result<impl IntoResponse, ApiError> {
+    let revoke_result = if let Some(refresh) = cookies.get("refresh") {
+        state
+            .auth_service
+            .logout(
+                refresh.value().to_string(),
+                state.config.refresh_secret.as_ref(),
+            )
+            .await
+    } else {
+        Ok(())
+    };
+
+    let mut access_token_removal = Cookie::new("access", "");
+    remove_cookie(&state, &mut access_token_removal);
+    cookies.remove(access_token_removal);
+
+    let mut refresh_token_removal = Cookie::new("refresh", "");
+    remove_cookie(&state, &mut refresh_token_removal);
+    cookies.remove(refresh_token_removal);
+
+    match revoke_result {
+        Ok(_) => Ok(StatusCode::NO_CONTENT),
+        Err(err) => {
+            tracing::error!(error = %err, "failed to revoke session during logout");
+            Ok(StatusCode::NO_CONTENT)
+        }
+    }
+}
+
+async fn authenticate(
+    State(state): State<AppState>,
+    cookies: Cookies,
+) -> Result<impl IntoResponse, ApiError> {
+    if let Some(cookie) = cookies.get("access") {
+        let result = state
+            .auth_service
+            .verify_token(cookie.value(), state.config.access_secret.as_ref())
+            .map_err(ApiError::from)?;
+
+        return Ok((StatusCode::OK, result.uid));
+    }
+
+    Ok(StatusCode::UNAUTHORIZED)
+}
+
+async fn refresh(
+    State(state): State<AppState>,
+    cookies: Cookies,
+) -> Result<impl IntoResponse, ApiError> {
+    if let Some(cookie) = cookies.get("refresh") {
+        let refresh_token = cookie.value();
+        // TODO IMPLEMENT URL EXTRACTOR for aud
+        let result = state
+            .auth_service
+            .refresh_token(
+                "".to_string(),
+                refresh_token,
+                state.config.refresh_secret.as_ref(),
+                state.config.access_secret.as_ref(),
+            )
+            .await
+            .map_err(ApiError::from)?;
+
+        let mut cookie = Cookie::new("access", result.access_token);
+        configure_cookie(&state, result.access_expires_at, &mut cookie);
+        cookies.add(cookie);
+
+        return Ok(StatusCode::OK);
+    }
+
+    Ok(StatusCode::UNAUTHORIZED)
+}
+
 /**
 Configures Cookies to be secure (for DRY)
 */
@@ -64,46 +145,15 @@ fn configure_cookie(state: &AppState, expires_at: OffsetDateTime, cookie: &mut C
     cookie.set_expires(expires_at);
 }
 
-async fn logout(
-    State(state): State<AppState>,
-    cookies: Cookies,
-) -> Result<impl IntoResponse, ApiError> {
-    // see if cookie even has the right value
-    if let Some(cookie) = cookies.get("refresh") {
-        let token_hash = TokenHandler::hash_token(
-            &cookie.value().to_string(),
-            state.config.refresh_secret.as_ref(),
-        );
-        state
-            .auth_service
-            .logout(token_hash.to_string())
-            .await
-            .map_err(ApiError::from)?;
-    }
-    // Remove token from client cookies
-    let mut removal = Cookie::new("access", "");
-    removal.set_path("/");
-    removal.set_http_only(true);
-    removal.set_same_site(SameSite::Lax);
-    removal.set_secure(!state.config.is_dev);
-    removal.make_removal();
-    cookies.add(removal);
-
-    Ok(StatusCode::NO_CONTENT)
-}
-
-async fn authenticate(
-    State(state): State<AppState>,
-    cookies: Cookies,
-) -> Result<impl IntoResponse, ApiError> {
-    if let Some(cookie) = cookies.get("access") {
-        state
-            .auth_service
-            .verify_token(cookie.value(), state.config.access_secret.as_ref())
-            .map_err(ApiError::from)?;
-    }
-
-    Ok(StatusCode::OK)
+/**
+Configures Cookies for deletion
+*/
+fn remove_cookie(state: &AppState, cookie_to_remove: &mut Cookie) {
+    cookie_to_remove.set_path("/");
+    cookie_to_remove.set_http_only(true);
+    cookie_to_remove.set_same_site(SameSite::Lax);
+    cookie_to_remove.set_secure(!state.config.is_dev);
+    cookie_to_remove.make_removal();
 }
 
 pub fn router() -> Router<AppState> {
@@ -111,5 +161,6 @@ pub fn router() -> Router<AppState> {
         .route("/register", post(register))
         .route("/login", post(login))
         .route("/logout", post(logout))
-        .route("/authenticate", post(authenticate))
+        .route("/me", get(authenticate))
+        .route("/refresh", post(refresh))
 }
