@@ -1,11 +1,11 @@
 use crate::model::user::UserId;
+use std::fmt::{Display, Formatter};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub struct Session {
     pub id: SessionId,
     pub uid: UserId,
-    pub jti: Uuid,
     pub token_hash: String,
     pub created_at: OffsetDateTime,
     pub expires_at: OffsetDateTime,
@@ -17,7 +17,6 @@ pub struct Session {
 
 pub struct NewSession {
     pub uid: UserId,
-    pub jti: Uuid,
     pub token_hash: String,
     pub expires_at: OffsetDateTime,
     pub revoked_at: Option<OffsetDateTime>,
@@ -36,8 +35,10 @@ impl SessionId {
     pub fn as_uuid(&self) -> Uuid {
         self.0
     }
+}
 
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
+impl Display for SessionId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }

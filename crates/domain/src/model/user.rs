@@ -1,7 +1,10 @@
+use crate::model::session::SessionId;
+use crate::model::user_type::UserType;
+use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::fmt::{Display, Formatter};
 use time::OffsetDateTime;
 use uuid::Uuid;
-use serde::{Deserialize, Serialize};
 
 pub struct User {
     pub uid: UserId,
@@ -28,8 +31,10 @@ impl UserId {
     pub fn as_uuid(&self) -> Uuid {
         self.0
     }
-    
-    pub fn to_string(&self) -> String {
-        self.0.to_string()
+}
+
+impl Display for UserId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
     }
 }

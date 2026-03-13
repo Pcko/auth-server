@@ -19,11 +19,11 @@ pub struct Claims {
     #[serde(with = "time::serde::timestamp")]
     pub exp: OffsetDateTime,
     pub aud: String,
-    pub sid: Option<Uuid>,
+    pub sid: Uuid,
 }
 
 impl Claims {
-    pub fn new(iss: String, sub: Uuid, aud: String, expires_in: Duration) -> Self {
+    pub fn new(iss: String, sub: Uuid, sid: Uuid, aud: String, expires_in: Duration) -> Self {
         let now = OffsetDateTime::now_utc();
         let exp = now + expires_in;
 
@@ -34,7 +34,7 @@ impl Claims {
             iat: now,
             exp: exp,
             aud: aud,
-            sid: None,
+            sid: sid,
         }
     }
 }

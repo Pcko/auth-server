@@ -2,7 +2,7 @@ use crate::services::token_service::TokenService;
 use crate::utils::token_handler::TokenHandler;
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
-use domain::model::session::{NewSession, Session};
+use domain::model::session::NewSession;
 use domain::model::user::{NewUser, User};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
@@ -11,6 +11,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 use tracing::{error, info, instrument};
+use uuid::Uuid;
 
 // DI per Domain UserRepository so the service doesn't know about diesel
 #[derive(Clone)]
@@ -22,13 +23,18 @@ pub struct AuthService {
 
 pub struct LoginResult {
     pub user: User,
-    pub session_token: String,
-    pub session_expires_at: OffsetDateTime,
+    pub access_token: String,
+    pub access_expires_at: OffsetDateTime,
     pub refresh_token: SecretString,
     pub refresh_expires_at: OffsetDateTime,
 }
 
-const ISSUER_NAME: &'static str = "PCKO_AUTH";
+pub struct VerifyResult {
+    pub uid: Uuid,
+    pub sid: Uuid,
+}
+
+const ISSUER_NAME: &'static str = "AUTH_SERVER";
 
 impl AuthService {
     pub fn new(
@@ -43,7 +49,8 @@ impl AuthService {
         }
     }
 
-    #[instrument(name = "auth.register", skip(self, password), fields(email = %email, username = %email))]
+    #[instrument(name = "auth.register", skip(self, password), fields(email = %email, username = %email
+    ))]
     pub async fn register(
         &self,
         email: String,
@@ -92,13 +99,14 @@ impl AuthService {
         Ok(user)
     }
 
-    #[instrument(name = "auth.login", skip(self, password,session_secret, refresh_secret), fields(email = %email))]
+    #[instrument(name = "auth.login", skip(self, password, access_secret, refresh_secret), fields(email = %email
+    ))]
     pub async fn login(
         &self,
         email: String,
         password: String,
         aud: String,
-        session_secret: &[u8],
+        access_secret: &[u8],
         refresh_secret: &[u8],
     ) -> Result<LoginResult, AuthError> {
         if email.trim().is_empty() {
@@ -132,18 +140,7 @@ impl AuthService {
                 AuthError::InvalidCredentials("invalid email or password".to_string())
             })?;
 
-        // generate session and refresh token
-        let (session_token, claims) = self
-            .token_service
-            .generate_access_token(
-                ISSUER_NAME.to_string(),
-                user.uid.as_uuid(),
-                aud,
-                Duration::hours(1),
-                session_secret,
-            )
-            .map_err(|_| AuthError::InvalidCredentials("invalid token".to_string()))?;
-
+        // refresh token
         let refresh_token = self.token_service.generate_refresh_token();
         let refresh_token_hash =
             TokenHandler::hash_token(refresh_token.expose_secret(), refresh_secret);
@@ -152,7 +149,6 @@ impl AuthService {
         // create session and with refresh token
         let session = NewSession {
             uid: user.uid,
-            jti: claims.jti,
             expires_at: refresh_expires_at,
             token_hash: String::from(refresh_token_hash),
             user_agent: None,
@@ -166,15 +162,28 @@ impl AuthService {
             .await
             .map_err(AuthError::SessionRepo)?;
 
+        // access token
+        let (access_token, claims) = self
+            .token_service
+            .generate_access_token(
+                ISSUER_NAME.to_string(),
+                user.uid.as_uuid(),
+                aud,
+                new_session.id.as_uuid(),
+                Duration::hours(1),
+                access_secret,
+            )
+            .map_err(|_| AuthError::InvalidCredentials("invalid token".to_string()))?;
+
         info!(
             user_id = %user.uid.as_uuid(),
-            session_id = %new_session.id.to_string(),
+            session_id = %new_session.id,
             "login succeeded"
         );
 
         Ok(LoginResult {
-            session_token,
-            session_expires_at: claims.exp,
+            access_token,
+            access_expires_at: claims.exp,
             refresh_token,
             refresh_expires_at,
             user,
@@ -191,31 +200,35 @@ impl AuthService {
         Ok(())
     }
 
-    #[instrument(name = "auth.authenticate", skip(self, token, secret))]
-    pub async fn authenticate_session(
+    #[instrument(name = "auth.verify_token", skip(self, access_token, secret))]
+    pub fn verify_token(
         &self,
-        token: &str,
+        access_token: &str,
         secret: &[u8],
-    ) -> Result<Session, AuthError> {
-        let hashed_token = TokenHandler::hash_token(token, secret);
+    ) -> Result<VerifyResult, AuthError> {
+        let result = self.token_service.verify_access_token(access_token, secret);
 
-        let session = self
-            .session_repo
-            .find_by_token_hash(hashed_token.to_string())
-            .await
-            .map_err(AuthError::SessionRepo)?
-            .ok_or_else(|| AuthError::Authentication)?;
+        if (result.is_err()) {
+            return Err(AuthError::InvalidCredentials(
+                "invalid access token".to_string(),
+            ));
+        }
 
-        if OffsetDateTime::now_utc() > session.expires_at {
+        let claims = result.unwrap();
+
+        if OffsetDateTime::now_utc() > claims.exp {
             Err(AuthError::Authentication)?;
         }
 
-        info!(
-            "User {0}: {1}",
-            session.uid.as_uuid(),
-            session.id.as_uuid().to_string()
-        );
-        Ok(session)
+        if !claims.iss.eq(ISSUER_NAME) {
+            Err(AuthError::Authentication)?;
+        }
+
+        info!("User {0}: {1}", claims.sub, claims.jti);
+        Ok(VerifyResult {
+            uid: claims.sub,
+            sid: claims.sid,
+        })
     }
 }
 

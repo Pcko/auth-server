@@ -4,7 +4,6 @@ diesel::table! {
     sessions (id) {
         id -> Uuid,
         uid -> Uuid,
-        jti -> Uuid,
         token_hash -> Text,
         created_at -> Timestamptz,
         expires_at -> Timestamptz,

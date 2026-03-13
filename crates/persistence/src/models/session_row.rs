@@ -10,7 +10,6 @@ use uuid::Uuid;
 pub struct SessionRow {
     pub id: Uuid,
     pub uid: Uuid,
-    pub jti: Uuid,
     pub token_hash: String,
     pub created_at: OffsetDateTime,
     pub expires_at: OffsetDateTime,
@@ -24,7 +23,6 @@ pub struct SessionRow {
 #[diesel(table_name = crate::schema::sessions)]
 pub struct NewSessionRow<'a> {
     pub uid: Uuid,
-    pub jti: Uuid,
     pub token_hash: &'a str,
     pub expires_at: &'a OffsetDateTime,
     pub user_agent: Option<&'a String>,
@@ -36,7 +34,6 @@ impl From<SessionRow> for Session {
         Session {
             id: SessionId::new(row.id),
             uid: UserId::new(row.uid),
-            jti: row.jti,
             token_hash: row.token_hash,
             created_at: row.created_at,
             last_seen_at: row.last_seen_at,
@@ -52,7 +49,6 @@ impl<'a> From<&'a NewSession> for NewSessionRow<'a> {
     fn from(session: &'a NewSession) -> NewSessionRow<'a> {
         Self {
             uid: session.uid.as_uuid(),
-            jti: session.jti,
             token_hash: &session.token_hash,
             expires_at: &session.expires_at,
             user_agent: session.user_agent.as_ref(),

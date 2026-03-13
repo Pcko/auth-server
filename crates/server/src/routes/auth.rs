@@ -36,16 +36,16 @@ async fn login(
     let result = state
         .auth_service
         /// TODO IMPLEMENT URL EXTRACTOR
-        .login(dto.email, dto.password, "url".to_string(), state.config.session_secret.as_ref(), state.config.refresh_secret.as_ref())
+        .login(dto.email, dto.password, "url".to_string(), state.config.access_secret.as_ref(), state.config.refresh_secret.as_ref())
         .await
         .map_err(ApiError::from)?;
 
     // Set cookie with session token on client
-    let mut session = Cookie::new("session", result.session_token);
-    configure_cookie(&state, result.session_expires_at, &mut session);
+    let mut session = Cookie::new("access", result.access_token);
+    configure_cookie(&state, result.access_expires_at, &mut session);
     let mut refresh = Cookie::new("refresh", result.refresh_token.into());
     configure_cookie(&state, result.refresh_expires_at, &mut refresh);
-    
+
     cookies.add(session);
     cookies.add(refresh);
     // Convert to UserDTO so I dont expose internal data
@@ -54,12 +54,12 @@ async fn login(
 
 // 
 /**
-    Configures Cookies to be secure (for DRY)
+Configures Cookies to be secure (for DRY)
 */
 fn configure_cookie(state: &AppState, expires_at: OffsetDateTime, cookie: &mut Cookie) {
     cookie.set_path("/");
     cookie.set_http_only(true);
-    cookie.set_secure(state.config.is_dev);
+    cookie.set_secure(!state.config.is_dev);
     cookie.set_same_site(SameSite::Lax);
     cookie.set_expires(expires_at);
 }
@@ -69,10 +69,10 @@ async fn logout(
     cookies: Cookies,
 ) -> Result<impl IntoResponse, ApiError> {
     // see if cookie even has the right value
-    if let Some(cookie) = cookies.get("session") {
+    if let Some(cookie) = cookies.get("refresh") {
         let token_hash = TokenHandler::hash_token(
             &cookie.value().to_string(),
-            state.config.session_secret.as_ref(),
+            state.config.refresh_secret.as_ref(),
         );
         state
             .auth_service
@@ -81,7 +81,7 @@ async fn logout(
             .map_err(ApiError::from)?;
     }
     // Remove token from client cookies
-    let mut removal = Cookie::new("session", "");
+    let mut removal = Cookie::new("access", "");
     removal.set_path("/");
     removal.set_http_only(true);
     removal.set_same_site(SameSite::Lax);
@@ -96,11 +96,10 @@ async fn authenticate(
     State(state): State<AppState>,
     cookies: Cookies,
 ) -> Result<impl IntoResponse, ApiError> {
-    if let Some(cookie) = cookies.get("session") {
+    if let Some(cookie) = cookies.get("access") {
         state
             .auth_service
-            .authenticate_session(cookie.value(), state.config.session_secret.as_ref())
-            .await
+            .verify_token(cookie.value(), state.config.access_secret.as_ref())
             .map_err(ApiError::from)?;
     }
 

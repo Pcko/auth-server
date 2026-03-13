@@ -6,7 +6,7 @@ pub struct AppConfig {
     pub server_addr: String,
     pub database_url: String,
     pub is_dev: bool,
-    pub session_secret: Vec<u8>,
+    pub access_secret: Vec<u8>,
     pub refresh_secret: Vec<u8>,
     pub log_level: LevelFilter,
 }
@@ -16,7 +16,6 @@ impl AppConfig {
         dotenvy::dotenv().ok();
 
         let server_addr = std::env::var("SERVER_ADDR").context("SERVER_ADDR must be set")?;
-
         let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
 
         // Dev env to evade security features
@@ -42,7 +41,7 @@ impl AppConfig {
             server_addr,
             database_url,
             is_dev,
-            session_secret,
+            access_secret: session_secret,
             refresh_secret,
             log_level,
         })
