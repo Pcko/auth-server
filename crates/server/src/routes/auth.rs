@@ -5,11 +5,13 @@ use crate::dto::register_dto::RegisterDTO;
 use crate::dto::user_dto::UserResponseDTO;
 use crate::errors::api_error::ApiError;
 use application::utils::token_handler::TokenHandler;
+use axum::body::Body;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use http::Response;
 use secrecy::{ExposeSecret, SecretString};
 use tower_cookies::cookie::SameSite;
 use tower_cookies::cookie::time::OffsetDateTime;
@@ -53,8 +55,9 @@ async fn login(
 
     cookies.add(session);
     cookies.add(refresh);
-    // Convert to UserDTO so I dont expose internal data
-    Ok((StatusCode::OK, Json(UserResponseDTO::from(result.user))))
+
+    let dto = UserResponseDTO::from(result.user);
+    Ok((StatusCode::OK, Json(dto)).into_response())
 }
 
 async fn logout(
@@ -100,10 +103,10 @@ async fn authenticate(
             .verify_token(cookie.value(), state.config.access_secret.as_ref())
             .map_err(ApiError::from)?;
 
-        return Ok((StatusCode::OK, result.uid));
+        return Ok((StatusCode::OK, result.uid.to_string()));
     }
 
-    Ok(StatusCode::UNAUTHORIZED)
+    Err(ApiError::Unauthorized("Unauthorized".to_string()))
 }
 
 async fn refresh(

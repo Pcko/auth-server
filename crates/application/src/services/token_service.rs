@@ -24,7 +24,7 @@ impl TokenService {
 
     /***
     Access tokens are JWT tokens and therefore carry information
-    iss - Issuer of token (f.e. "auth_server)
+        iss - Issuer of token (f.e. "auth_server)
         sub - Subject of token (UID)
         aud - Audience of token (f.e. my-app.com)
         expires_in - Token expire timestamp

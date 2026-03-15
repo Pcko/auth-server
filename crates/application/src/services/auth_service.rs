@@ -2,16 +2,14 @@ use crate::services::token_service::{TokenError, TokenService};
 use crate::utils::token_handler::TokenHandler;
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
-use domain::model::Claims::Claims;
 use domain::model::session::NewSession;
 use domain::model::user::{NewUser, User};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
-use secrecy::{ExposeSecret, SecretBox, SecretString};
+use secrecy::{ExposeSecret, SecretString};
 use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
-use tracing::log::Level::Info;
 use tracing::{error, info, instrument};
 use uuid::Uuid;
 
@@ -68,20 +66,10 @@ impl AuthService {
         username: String,
         password: String,
     ) -> Result<User, AuthError> {
-        if email.trim().is_empty() {
-            let msg: &'static str = "Email is empty";
-            error!(msg);
-            return Err(AuthError::Validation(msg.into()));
-        }
+        let _ = Self::validate_credentials(&email, &password).unwrap();
 
         if username.trim().is_empty() {
             let msg: &'static str = "Username is empty";
-            error!(msg);
-            return Err(AuthError::Validation(msg.into()));
-        }
-
-        if password.len() < 8 {
-            let msg: &'static str = "Password is too short";
             error!(msg);
             return Err(AuthError::Validation(msg.into()));
         }
@@ -120,16 +108,8 @@ impl AuthService {
         access_secret: &[u8],
         refresh_secret: &[u8],
     ) -> Result<LoginResult, AuthError> {
-        if email.trim().is_empty() {
-            let msg: &'static str = "Email is empty";
-            error!(msg);
-            return Err(AuthError::Validation(msg.into()));
-        }
-        if password.len() < 8 {
-            let msg: &'static str = "Password is too short";
-            error!(msg);
-            return Err(AuthError::Validation(msg.into()));
-        }
+        let _ = Self::validate_credentials(&email, &password).unwrap();
+
         // find User if error during search -> internal else if not a user then user with email doesn't exist
         let user = self
             .user_repo
@@ -184,7 +164,7 @@ impl AuthService {
                 ACCESS_TOKEN_DURATION,
                 access_secret,
             )
-            .map_err(|_| AuthError::InvalidCredentials("invalid token".to_string()))?;
+            .map_err(|err| AuthError::Token(err))?;
 
         info!(
             user_id = %user.uid.as_uuid(),
@@ -201,13 +181,24 @@ impl AuthService {
         })
     }
 
+    fn validate_credentials(email: &String, password: &String) -> Option<Result<(), AuthError>> {
+        if email.trim().is_empty() {
+            let msg: &'static str = "Email is empty";
+            error!(msg);
+            return Some(Err(AuthError::Validation(msg.into())));
+        }
+        if password.len() < 8 {
+            let msg: &'static str = "Password is too short";
+            error!(msg);
+            return Some(Err(AuthError::Validation(msg.into())));
+        }
+        None
+    }
+
     #[instrument(name = "auth.logout", skip(self, token, secret))]
     pub async fn logout(&self, token: String, secret: &[u8]) -> Result<(), AuthError> {
         // TODO use sid in access token to find session first for consistency
-        let token_hash = TokenHandler::hash_token(
-            &token,
-            secret,
-        );
+        let token_hash = TokenHandler::hash_token(&token, secret);
         self.session_repo
             .delete_by_token_hash(token_hash)
             .await
@@ -225,7 +216,7 @@ impl AuthService {
         let claims = self
             .token_service
             .verify_access_token(access_token, secret)
-            .map_err(|_| AuthError::InvalidCredentials("invalid access token".to_string()))?;
+            .map_err(|err| AuthError::Token(err))?;
 
         if OffsetDateTime::now_utc() > claims.exp {
             return Err(AuthError::Authentication);

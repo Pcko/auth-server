@@ -1,6 +1,7 @@
 use crate::models::session_row::{NewSessionRow, SessionRow};
 use crate::schema;
 use crate::schema::sessions::dsl::{sessions, token_hash, uid};
+use diesel::associations::HasTable;
 
 use diesel::prelude::*;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
@@ -157,6 +158,21 @@ impl SessionRepository for DieselSessionRepository {
             .map_err(map_diesel_error)?;
 
         Ok(row.map(Into::into))
+    }
+
+    async fn find_all(&self) -> Result<Vec<Session>, SessionRepositoryError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
+
+        let rows = sessions
+            .load::<SessionRow>(&mut conn)
+            .await
+            .map_err(map_diesel_error)?;
+
+        return Ok(rows.into_iter().map(Into::into).collect());
     }
 }
 

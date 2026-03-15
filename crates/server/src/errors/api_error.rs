@@ -27,6 +27,7 @@ impl From<AuthError> for ApiError {
             | AuthError::HashParse(_) => {
                 ApiError::InternalServerError("Internal server error".to_string())
             }
+            AuthError::Token(err) => ApiError::Unauthorized(format!("Token error: {err}")),
         }
     }
 }

@@ -26,7 +26,16 @@ async fn get_users(
     Ok(Json(response))
 }
 
-async fn get_user(Path(id): Path<u64>) -> impl IntoResponse {}
+async fn get_user(state: State<AppState>, Path(id): Path<u64>) -> Result<impl IntoResponse, StatusCode> {
+    let user = state
+        .user_service
+        .get_user(id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    
+    let dto = UserResponseDTO::from(user);
+    Ok(Json(dto))
+}
 
 pub fn router() -> Router<AppState> {
     Router::new()
