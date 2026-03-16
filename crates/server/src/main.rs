@@ -2,6 +2,7 @@ mod diesel_logging;
 
 use anyhow::Result;
 use application::services::auth_service::AuthService;
+use application::services::token_service::TokenService;
 use application::services::user_service::UserService;
 use diesel::connection::set_default_instrumentation;
 use diesel_async::AsyncPgConnection;
@@ -18,7 +19,6 @@ use tracing_appender::rolling;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use application::services::token_service::TokenService;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -54,7 +54,11 @@ fn build_app(pool: Pool<AsyncPgConnection>, config: AppConfig) -> AppState {
     let session_repo = Arc::new(DieselSessionRepository::new(pool.clone()));
     // we only clone the Arc it still points to the same repo
     let token_service = Arc::new(TokenService::new(session_repo.clone()));
-    let auth_service = Arc::new(AuthService::new(user_repo.clone(), session_repo.clone(), token_service.clone()));
+    let auth_service = Arc::new(AuthService::new(
+        user_repo.clone(),
+        session_repo.clone(),
+        token_service.clone(),
+    ));
     let user_service = Arc::new(UserService::new(user_repo.clone()));
 
     AppState {

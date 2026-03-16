@@ -32,7 +32,7 @@ async fn register(
 
 /**
     Route: Login (Token creation)
-    TODO in login sollte aud nicht die url sein sondern ein service name 
+    TODO in login sollte aud nicht die url sein sondern ein service name
     z.B.: App_XYZ
 */
 async fn login(

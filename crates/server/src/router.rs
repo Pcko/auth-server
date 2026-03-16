@@ -2,7 +2,7 @@ use crate::middleware::request_info_extractor::ExtractRequestInfo;
 use crate::middleware::user_extractor::UserExtractor;
 use crate::routes::{auth, health, user};
 use crate::state::AppState;
-use axum::{http, middleware, Router};
+use axum::{Router, http, middleware};
 use tower::ServiceBuilder;
 use tower_cookies::CookieManagerLayer;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
@@ -24,12 +24,10 @@ pub fn app(state: AppState) -> Router {
         .layer(CookieManagerLayer::new())
         .layer(TraceLayer::new_for_http());
 
-    // feature specific 
+    // feature specific
     let users = user::router().route_layer(
         ServiceBuilder::new()
-            .layer(middleware::from_extractor_with_state::<ExtractRequestInfo, _>(
-                state.clone(),
-            ))
+            .layer(middleware::from_extractor_with_state::<ExtractRequestInfo, _>(state.clone()))
             .layer(middleware::from_extractor_with_state::<UserExtractor, _>(
                 state.clone(),
             )),

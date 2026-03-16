@@ -84,7 +84,8 @@ impl AuthService {
 
         // Create new User
         let new_row = NewUser {
-            name: username, email: email,
+            name: username,
+            email: email,
             password_hash: password_hash,
         };
 
@@ -253,7 +254,7 @@ impl AuthService {
             return Err(AuthError::Authentication);
         };
 
-        if session.revoked_at.is_some() || session.expires_at<= OffsetDateTime::now_utc() {
+        if session.revoked_at.is_some() || session.expires_at <= OffsetDateTime::now_utc() {
             return Err(AuthError::Authentication);
         }
 
