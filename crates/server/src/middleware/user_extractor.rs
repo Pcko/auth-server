@@ -5,13 +5,13 @@ use axum::http::request::Parts;
 use tower_cookies::Cookies;
 use uuid::Uuid;
 
-pub struct AuthSession {
+pub struct UserExtractor {
     pub user_id: Uuid,
 }
 
 pub const ACCESS_COOKIE_KEY: &str = "access";
 
-impl<S> FromRequestParts<S> for AuthSession
+impl<S> FromRequestParts<S> for UserExtractor
 where
     S: Send + Sync,
     AppState: FromRef<S>,
@@ -38,7 +38,7 @@ where
             .verify_token(&*token, app_state.config.access_secret.as_slice())?;
 
         // Return data for routes
-        Ok(AuthSession {
+        Ok(UserExtractor {
             user_id: result.uid,
         })
     }
