@@ -1,4 +1,4 @@
-use crate::middleware::request_info_extractor::RequestInfoExtractr;
+use crate::middleware::request_info_extractor::ExtractRequestInfo;
 use crate::middleware::user_extractor::UserExtractor;
 use crate::routes::{auth, health, user};
 use crate::state::AppState;
@@ -27,7 +27,7 @@ pub fn app(state: AppState) -> Router {
     // feature specific 
     let users = user::router().route_layer(
         ServiceBuilder::new()
-            .layer(middleware::from_extractor_with_state::<RequestInfoExtractr, _>(
+            .layer(middleware::from_extractor_with_state::<ExtractRequestInfo, _>(
                 state.clone(),
             ))
             .layer(middleware::from_extractor_with_state::<UserExtractor, _>(

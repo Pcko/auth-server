@@ -35,7 +35,8 @@ where
 
         let result = app_state
             .auth_service
-            .verify_token(&*token, app_state.config.access_secret.as_slice())?;
+            .verify_token(&*token, app_state.config.access_secret.as_slice())
+            .await?;
 
         // Return data for routes
         Ok(UserExtractor {

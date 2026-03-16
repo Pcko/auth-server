@@ -53,7 +53,7 @@ fn build_app(pool: Pool<AsyncPgConnection>, config: AppConfig) -> AppState {
     let user_repo = Arc::new(DieselUserRepository::new(pool.clone()));
     let session_repo = Arc::new(DieselSessionRepository::new(pool.clone()));
     // we only clone the Arc it still points to the same repo
-    let token_service = Arc::new(TokenService::new());
+    let token_service = Arc::new(TokenService::new(session_repo.clone()));
     let auth_service = Arc::new(AuthService::new(user_repo.clone(), session_repo.clone(), token_service.clone()));
     let user_service = Arc::new(UserService::new(user_repo.clone()));
 

@@ -1,25 +1,34 @@
 use crate::utils::token_handler::TokenHandler;
 use domain::model::Claims::Claims;
+use domain::model::session::SessionId;
+use domain::repositories::session_repository::SessionRepository;
 use jsonwebtoken::{
     Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation, decode, encode,
 };
+use persistence::repositories::session_repository::DieselSessionRepository;
 use secrecy::{SecretBox, SecretString};
+use std::sync::Arc;
 use thiserror::Error;
-use time::Duration;
+use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 pub struct TokenService {
     header: Header,
     validation: Validation,
+    session_repository: Arc<DieselSessionRepository>,
 }
 
 impl TokenService {
-    pub fn new() -> Self {
+    pub fn new(session_repository: Arc<DieselSessionRepository>) -> Self {
         let mut header = Header::new(Algorithm::HS256);
         let validation = Validation::new(Algorithm::HS256);
         header.typ = Some("JWT".to_string());
 
-        Self { header, validation }
+        Self {
+            header,
+            validation,
+            session_repository,
+        }
     }
 
     /***
@@ -55,16 +64,31 @@ impl TokenService {
         refresh_token
     }
 
-    pub fn verify_access_token(&self, token: &str, secret: &[u8]) -> Result<Claims, TokenError> {
-        let result = decode::<Claims>(token, &DecodingKey::from_secret(secret), &self.validation);
+    pub async fn verify_access_token(
+        &self,
+        token: &str,
+        secret: &[u8],
+    ) -> Result<Claims, TokenError> {
+        let result =
+            decode::<Claims>(token, &DecodingKey::from_secret(secret), &self.validation)
+                .map_err(|_| TokenError::InvalidToken("Access Token is invalid".to_string()))?;
 
-        if (!result.is_ok()) {
-            Err(TokenError::InvalidToken(
-                "Access Token is invalid".to_string(),
-            ))?;
+        let claims = result.claims;
+
+        let session = self
+            .session_repository
+            .find_by_id(SessionId::new(claims.sid))
+            .await
+            .map_err(|_| TokenError::Unexpected("Session Repository Error"))?;
+
+        let Some(session) = session else {
+            return Err(TokenError::InvalidToken("Access Token Invalid".to_string()));
+        };
+
+        if session.revoked_at.is_some() || session.expires_at <= OffsetDateTime::now_utc() {
+            return Err(TokenError::InvalidToken("Access Token Invalid".to_string()));
         }
 
-        let claims = result.unwrap().claims;
         Ok(claims)
     }
 }

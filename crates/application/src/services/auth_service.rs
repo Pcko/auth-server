@@ -2,11 +2,13 @@ use crate::services::token_service::{TokenError, TokenService};
 use crate::utils::token_handler::TokenHandler;
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use domain::model::request_info::RequestInfo;
 use domain::model::session::NewSession;
 use domain::model::user::{NewUser, User};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
 use secrecy::{ExposeSecret, SecretString};
+use std::net::IpAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
@@ -58,15 +60,14 @@ impl AuthService {
         }
     }
 
-    #[instrument(name = "auth.register", skip(self, password), fields(email = %email, username = %email
-    ))]
+    #[instrument(name = "auth.register", skip(self, password), fields(email = %email, username = %username))]
     pub async fn register(
         &self,
         email: String,
         username: String,
         password: String,
     ) -> Result<User, AuthError> {
-        let _ = Self::validate_credentials(&email, &password).unwrap();
+        let _ = Self::validate_credentials(&email, &password)?;
 
         if username.trim().is_empty() {
             let msg: &'static str = "Username is empty";
@@ -83,8 +84,7 @@ impl AuthService {
 
         // Create new User
         let new_row = NewUser {
-            name: username,
-            email: email,
+            name: username, email: email,
             password_hash: password_hash,
         };
 
@@ -104,11 +104,11 @@ impl AuthService {
         &self,
         email: String,
         password: String,
-        aud: String,
+        request_info: RequestInfo,
         access_secret: &[u8],
         refresh_secret: &[u8],
     ) -> Result<LoginResult, AuthError> {
-        let _ = Self::validate_credentials(&email, &password).unwrap();
+        let _ = Self::validate_credentials(&email, &password)?;
 
         // find User if error during search -> internal else if not a user then user with email doesn't exist
         let user = self
@@ -142,8 +142,8 @@ impl AuthService {
             uid: user.uid,
             expires_at: refresh_expires_at,
             token_hash: String::from(refresh_token_hash),
-            user_agent: None,
-            ip_address: None,
+            user_agent: request_info.user_agent,
+            ip_address: request_info.ip,
             revoked_at: None,
         };
 
@@ -159,7 +159,7 @@ impl AuthService {
             .generate_access_token(
                 ISSUER_NAME.to_string(),
                 user.uid.as_uuid(),
-                aud,
+                request_info.url,
                 new_session.id.as_uuid(),
                 ACCESS_TOKEN_DURATION,
                 access_secret,
@@ -181,18 +181,16 @@ impl AuthService {
         })
     }
 
-    fn validate_credentials(email: &String, password: &String) -> Option<Result<(), AuthError>> {
+    fn validate_credentials(email: &str, password: &str) -> Result<(), AuthError> {
         if email.trim().is_empty() {
-            let msg: &'static str = "Email is empty";
-            error!(msg);
-            return Some(Err(AuthError::Validation(msg.into())));
+            return Err(AuthError::Validation("Email is empty".into()));
         }
+
         if password.len() < 8 {
-            let msg: &'static str = "Password is too short";
-            error!(msg);
-            return Some(Err(AuthError::Validation(msg.into())));
+            return Err(AuthError::Validation("Password is too short".into()));
         }
-        None
+
+        Ok(())
     }
 
     #[instrument(name = "auth.logout", skip(self, token, secret))]
@@ -208,7 +206,7 @@ impl AuthService {
     }
 
     #[instrument(name = "auth.verify_token", skip(self, access_token, secret))]
-    pub fn verify_token(
+    pub async fn verify_token(
         &self,
         access_token: &str,
         secret: &[u8],
@@ -216,6 +214,7 @@ impl AuthService {
         let claims = self
             .token_service
             .verify_access_token(access_token, secret)
+            .await
             .map_err(|err| AuthError::Token(err))?;
 
         if OffsetDateTime::now_utc() > claims.exp {
@@ -233,6 +232,7 @@ impl AuthService {
             sid: claims.sid,
         })
     }
+
     #[instrument(name = "auth.refresh_token", skip(self, refresh_token, refresh_secret))]
     pub async fn refresh_token(
         &self,
@@ -249,11 +249,13 @@ impl AuthService {
             .await
             .map_err(AuthError::SessionRepo)?;
 
-        if !session_option.is_some() {
+        let Some(session) = session_option else {
+            return Err(AuthError::Authentication);
+        };
+
+        if session.revoked_at.is_some() || session.expires_at<= OffsetDateTime::now_utc() {
             return Err(AuthError::Authentication);
         }
-
-        let session = session_option.unwrap();
 
         let (access_token, claims) = self
             .token_service

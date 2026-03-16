@@ -4,19 +4,20 @@ use crate::dto::auth_dto::LoginDTO;
 use crate::dto::register_dto::RegisterDTO;
 use crate::dto::user_dto::UserResponseDTO;
 use crate::errors::api_error::ApiError;
-use application::utils::token_handler::TokenHandler;
-use axum::body::Body;
+use crate::middleware::request_info_extractor::ExtractRequestInfo;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use http::Response;
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::ExposeSecret;
 use tower_cookies::cookie::SameSite;
 use tower_cookies::cookie::time::OffsetDateTime;
 use tower_cookies::{Cookie, Cookies};
 
+/**
+    Register (User Creation)
+*/
 async fn register(
     State(state): State<AppState>,
     Json(dto): Json<RegisterDTO>,
@@ -29,18 +30,23 @@ async fn register(
         .map(|_| StatusCode::CREATED)
 }
 
+/**
+    Route: Login (Token creation)
+    TODO in login sollte aud nicht die url sein sondern ein service name 
+    z.B.: App_XYZ
+*/
 async fn login(
     State(state): State<AppState>,
+    request_info: ExtractRequestInfo,
     cookies: Cookies,
     Json(dto): Json<LoginDTO>,
 ) -> Result<impl IntoResponse, ApiError> {
     let result = state
         .auth_service
-        // TODO IMPLEMENT URL EXTRACTOR for aud
         .login(
             dto.email,
             dto.password,
-            "url".to_string(),
+            request_info.into(),
             state.config.access_secret.as_ref(),
             state.config.refresh_secret.as_ref(),
         )
@@ -60,6 +66,9 @@ async fn login(
     Ok((StatusCode::OK, Json(dto)).into_response())
 }
 
+/**
+    Route: Logout (Token invalidation)
+*/
 async fn logout(
     State(state): State<AppState>,
     cookies: Cookies,
@@ -93,6 +102,9 @@ async fn logout(
     }
 }
 
+/**
+    Route: Access Token validation
+*/
 async fn authenticate(
     State(state): State<AppState>,
     cookies: Cookies,
@@ -101,6 +113,7 @@ async fn authenticate(
         let result = state
             .auth_service
             .verify_token(cookie.value(), state.config.access_secret.as_ref())
+            .await
             .map_err(ApiError::from)?;
 
         return Ok((StatusCode::OK, result.uid.to_string()));
@@ -109,17 +122,21 @@ async fn authenticate(
     Err(ApiError::Unauthorized("Unauthorized".to_string()))
 }
 
+/**
+    Route: Access Token refresh
+    TODO: Implement Refresh token rotation
+*/
 async fn refresh(
     State(state): State<AppState>,
+    ExtractRequestInfo { url, .. }: ExtractRequestInfo,
     cookies: Cookies,
 ) -> Result<impl IntoResponse, ApiError> {
     if let Some(cookie) = cookies.get("refresh") {
         let refresh_token = cookie.value();
-        // TODO IMPLEMENT URL EXTRACTOR for aud
         let result = state
             .auth_service
             .refresh_token(
-                "".to_string(),
+                url,
                 refresh_token,
                 state.config.refresh_secret.as_ref(),
                 state.config.access_secret.as_ref(),
@@ -138,7 +155,7 @@ async fn refresh(
 }
 
 /**
-Configures Cookies to be secure (for DRY)
+    Configures Cookies to be secure (for DRY)
 */
 fn configure_cookie(state: &AppState, expires_at: OffsetDateTime, cookie: &mut Cookie) {
     cookie.set_path("/");
@@ -149,7 +166,7 @@ fn configure_cookie(state: &AppState, expires_at: OffsetDateTime, cookie: &mut C
 }
 
 /**
-Configures Cookies for deletion
+    Configures Cookies for deletion
 */
 fn remove_cookie(state: &AppState, cookie_to_remove: &mut Cookie) {
     cookie_to_remove.set_path("/");
@@ -159,6 +176,9 @@ fn remove_cookie(state: &AppState, cookie_to_remove: &mut Cookie) {
     cookie_to_remove.make_removal();
 }
 
+/**
+    Auth Router
+*/
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/register", post(register))

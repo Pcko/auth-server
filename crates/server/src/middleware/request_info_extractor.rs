@@ -1,4 +1,6 @@
 use axum::extract::{ConnectInfo, FromRequestParts};
+use axum::response::IntoResponse;
+use domain::model::request_info::RequestInfo;
 use http::{HeaderMap, header, request::Parts};
 use std::{
     convert::Infallible,
@@ -6,13 +8,13 @@ use std::{
 };
 
 #[derive(Debug, Clone)]
-pub struct RequestInfoExtractr {
+pub struct ExtractRequestInfo {
     pub url: String,
     pub user_agent: Option<String>,
     pub ip: Option<IpAddr>,
 }
 
-impl RequestInfoExtractr {
+impl ExtractRequestInfo {
     const X_FORWARDED_FOR: &str = "x-forwarded-for";
     const X_REAL_IP: &str = "x-real-ip"; // for nginx
 
@@ -35,7 +37,7 @@ impl RequestInfoExtractr {
     }
 }
 
-impl<S> FromRequestParts<S> for RequestInfoExtractr
+impl<S> FromRequestParts<S> for ExtractRequestInfo
 where
     S: Send + Sync,
 {
@@ -62,5 +64,18 @@ where
             user_agent,
             ip,
         })
+    }
+}
+
+impl Into<RequestInfo> for ExtractRequestInfo {
+    fn into(self) -> RequestInfo {
+        // from Option<IpAdrs> zu Option<String>
+        let ip = self.ip.map(|addr| addr.to_string());
+
+        RequestInfo {
+            ip: ip,
+            url: self.url,
+            user_agent: self.user_agent,
+        }
     }
 }
