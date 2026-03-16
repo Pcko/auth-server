@@ -1,12 +1,12 @@
+use crate::services::auth_service::RefreshResult;
 use crate::utils::token_handler::TokenHandler;
+use core::num;
 use domain::model::Claims::Claims;
-use domain::model::session::SessionId;
+use domain::model::session::{Session, SessionId};
 use domain::repositories::session_repository::SessionRepository;
-use jsonwebtoken::{
-    Algorithm, DecodingKey, EncodingKey, Header, TokenData, Validation, decode, encode,
-};
-use persistence::repositories::session_repository::DieselSessionRepository;
-use secrecy::{SecretBox, SecretString};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
+use std::ops::Add;
 use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
@@ -15,11 +15,16 @@ use uuid::Uuid;
 pub struct TokenService {
     header: Header,
     validation: Validation,
-    session_repository: Arc<DieselSessionRepository>,
+    session_repository: Arc<dyn SessionRepository>,
+}
+
+pub struct RotatedRefreshToken {
+    pub session: Session,
+    pub refresh_token: SecretString,
 }
 
 impl TokenService {
-    pub fn new(session_repository: Arc<DieselSessionRepository>) -> Self {
+    pub fn new(session_repository: Arc<dyn SessionRepository>) -> Self {
         let mut header = Header::new(Algorithm::HS256);
         let validation = Validation::new(Algorithm::HS256);
         header.typ = Some("JWT".to_string());
@@ -33,7 +38,7 @@ impl TokenService {
 
     /***
     Access tokens are JWT tokens and therefore carry information
-        iss - Issuer of token (f.e. "auth_server)
+        iss - Issuer of token (f.e. auth_server)
         sub - Subject of token (UID)
         aud - Audience of token (f.e. my-app.com)
         expires_in - Token expire timestamp
@@ -90,6 +95,41 @@ impl TokenService {
         }
 
         Ok(claims)
+    }
+
+    pub async fn rotate_refresh_token(
+        &self,
+        session: Session,
+        secret: &[u8],
+        refresh_token_duration: Duration,
+    ) -> Result<RotatedRefreshToken, TokenError> {
+        if session.revoked_at.is_some() || session.expires_at <= OffsetDateTime::now_utc() {
+            return Err(TokenError::InvalidToken("Refresh Token invalid".into()));
+        }
+
+        let mut new_session = session;
+        let refresh_token = self.generate_refresh_token();
+        let refresh_token_hash = TokenHandler::hash_token(refresh_token.expose_secret(), secret);
+        new_session.token_hash = refresh_token_hash;
+        
+        // This is for Session sliding (each refresh)
+        let candidate = OffsetDateTime::now_utc().add(refresh_token_duration);
+        // The token can live for 90 days at max
+        let absolute_cap = new_session.created_at + Duration::days(90);
+        let new_expires_at = candidate.min(absolute_cap);
+
+        new_session.expires_at = new_expires_at;
+
+        let updated_session = self
+            .session_repository
+            .update_refresh_token_data(new_session)
+            .await
+            .map_err(|_| TokenError::Unexpected("Token refresh failed"))?;
+
+        Ok(RotatedRefreshToken {
+            session: updated_session,
+            refresh_token,
+        })
     }
 }
 

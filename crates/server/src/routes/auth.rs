@@ -144,9 +144,15 @@ async fn refresh(
             .await
             .map_err(ApiError::from)?;
 
-        let mut cookie = Cookie::new("access", result.access_token);
-        configure_cookie(&state, result.access_expires_at, &mut cookie);
-        cookies.add(cookie);
+        // New Access Token
+        let mut access_cookie = Cookie::new("access", result.access_token);
+        configure_cookie(&state, result.access_expires_at, &mut access_cookie);
+        cookies.add(access_cookie);
+        // Rotated Refresh Token
+        let mut refresh_cookie =
+            Cookie::new("refresh", result.refresh_token.expose_secret().to_owned());
+        configure_cookie(&state, result.refresh_expires_at, &mut refresh_cookie);
+        cookies.add(refresh_cookie);
 
         return Ok(StatusCode::OK);
     }

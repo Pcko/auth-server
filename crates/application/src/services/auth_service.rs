@@ -8,7 +8,6 @@ use domain::model::user::{NewUser, User};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
 use secrecy::{ExposeSecret, SecretString};
-use std::net::IpAddr;
 use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
@@ -39,8 +38,8 @@ pub struct VerifyResult {
 pub struct RefreshResult {
     pub access_token: String,
     pub access_expires_at: OffsetDateTime,
-    // TODO wird mit refresh token rotation implementiert
-    pub refresh_token: Option<SecretString>,
+    pub refresh_token: SecretString,
+    pub refresh_expires_at: OffsetDateTime,
 }
 
 const ISSUER_NAME: &'static str = "AUTH_SERVER";
@@ -67,7 +66,7 @@ impl AuthService {
         username: String,
         password: String,
     ) -> Result<User, AuthError> {
-        let _ = Self::validate_credentials(&email, &password)?;
+        Self::validate_credentials(&email, &password)?;
 
         if username.trim().is_empty() {
             let msg: &'static str = "Username is empty";
@@ -117,7 +116,9 @@ impl AuthService {
             .find_by_email(&email)
             .await
             .map_err(AuthError::UserRepo)?
-            .ok_or(AuthError::InvalidCredentials("Email invalid".to_string()))?;
+            .ok_or(AuthError::InvalidCredentials(
+                "invalid email or password".to_string(),
+            ))?;
 
         // parse the password from db
         let argon2 = Argon2::default();
@@ -270,12 +271,20 @@ impl AuthService {
             )
             .map_err(AuthError::Token)?;
 
-        info!("Token refreshed: {0} {1}", session.id, session.uid);
+        let result = self
+            .token_service
+            .rotate_refresh_token(session, refresh_secret, REFRESH_TOKEN_DURATION)
+            .await?;
+        info!(
+            "Token refreshed and RToken rotated: {0} {1}",
+            result.session.id, result.session.uid
+        );
 
         Ok(RefreshResult {
             access_token,
             access_expires_at: claims.exp,
-            refresh_token: None,
+            refresh_token: result.refresh_token,
+            refresh_expires_at: result.session.expires_at,
         })
     }
 }
