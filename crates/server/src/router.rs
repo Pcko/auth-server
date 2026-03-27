@@ -33,9 +33,12 @@ pub fn app(state: AppState) -> Router {
             )),
     );
 
+    // admin routes
+    let admin_router = Router::new().nest("/users", users);
+
     Router::new()
         .nest("/auth", auth::router())
-        .nest("/users", users)
+        .merge(admin_router)
         .merge(health::router())
         .layer(infra_layer)
         .with_state(state)

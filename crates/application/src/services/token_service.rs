@@ -1,7 +1,7 @@
 use crate::services::auth_service::RefreshResult;
 use crate::utils::token_handler::TokenHandler;
 use core::num;
-use domain::model::Claims::Claims;
+use domain::model::claims::Claims;
 use domain::model::session::{Session, SessionId};
 use domain::repositories::session_repository::SessionRepository;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
@@ -111,7 +111,7 @@ impl TokenService {
         let refresh_token = self.generate_refresh_token();
         let refresh_token_hash = TokenHandler::hash_token(refresh_token.expose_secret(), secret);
         new_session.token_hash = refresh_token_hash;
-        
+
         // This is for Session sliding (each refresh)
         let candidate = OffsetDateTime::now_utc().add(refresh_token_duration);
         // The token can live for 90 days at max

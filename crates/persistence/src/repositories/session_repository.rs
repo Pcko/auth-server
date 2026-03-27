@@ -177,7 +177,10 @@ impl SessionRepository for DieselSessionRepository {
         return Ok(rows.into_iter().map(Into::into).collect());
     }
 
-    async fn update_refresh_token_data(&self, session: Session) -> Result<Session, SessionRepositoryError> {
+    async fn update_refresh_token_data(
+        &self,
+        session: Session,
+    ) -> Result<Session, SessionRepositoryError> {
         let mut conn = self
             .pool
             .get()

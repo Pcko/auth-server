@@ -26,5 +26,8 @@ pub trait SessionRepository: Send + Sync {
     ) -> Result<Option<Session>, SessionRepositoryError>;
 
     async fn find_all(&self) -> Result<Vec<Session>, SessionRepositoryError>;
-    async fn update_refresh_token_data(&self, session: Session) -> Result<Session, SessionRepositoryError>;
+    async fn update_refresh_token_data(
+        &self,
+        session: Session,
+    ) -> Result<Session, SessionRepositoryError>;
 }
