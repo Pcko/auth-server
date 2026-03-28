@@ -1,7 +1,9 @@
 use crate::models::session_row::{NewSessionRow, SessionRow};
 use crate::schema;
 use crate::schema::sessions::dsl::{sessions, token_hash, uid};
+use diesel::dsl::update;
 
+use crate::schema::sessions::{expires_at, id, last_seen_at};
 use diesel::prelude::*;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use diesel_async::pooled_connection::bb8::Pool;
@@ -9,6 +11,7 @@ use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use domain::model::session::{NewSession, Session, SessionId};
 use domain::model::user::UserId;
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
+use time::OffsetDateTime;
 use tracing::error;
 
 #[derive(Clone)]
@@ -157,6 +160,44 @@ impl SessionRepository for DieselSessionRepository {
             .map_err(map_diesel_error)?;
 
         Ok(row.map(Into::into))
+    }
+
+    async fn find_all(&self) -> Result<Vec<Session>, SessionRepositoryError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
+
+        let rows = sessions
+            .load::<SessionRow>(&mut conn)
+            .await
+            .map_err(map_diesel_error)?;
+
+        return Ok(rows.into_iter().map(Into::into).collect());
+    }
+
+    async fn update_refresh_token_data(
+        &self,
+        session: Session,
+    ) -> Result<Session, SessionRepositoryError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
+
+        let updated_row = update(sessions)
+            .set((
+                token_hash.eq(session.token_hash),
+                expires_at.eq(session.expires_at),
+                last_seen_at.eq(OffsetDateTime::now_utc()),
+            ))
+            .get_result::<SessionRow>(&mut conn)
+            .await
+            .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
+
+        Ok(updated_row.into())
     }
 }
 
