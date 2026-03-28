@@ -6,7 +6,8 @@ pub struct AppConfig {
     pub server_addr: String,
     pub database_url: String,
     pub is_dev: bool,
-    pub secret_key: Vec<u8>,
+    pub access_secret: Vec<u8>,
+    pub refresh_secret: Vec<u8>,
     pub log_level: LevelFilter,
 }
 
@@ -15,7 +16,6 @@ impl AppConfig {
         dotenvy::dotenv().ok();
 
         let server_addr = std::env::var("SERVER_ADDR").context("SERVER_ADDR must be set")?;
-
         let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
 
         // Dev env to evade security features
@@ -24,8 +24,14 @@ impl AppConfig {
             .parse::<bool>()?;
 
         // Server Side key for session token hashing
-        let secret_key = std::env::var("SECRET_KEY").context("SECRET_KEY must be set")?;
-        let secret_key = secret_key.as_bytes().to_vec();
+        let session_secret =
+            std::env::var("SESSION_SECRET").context("SESSION_SECRET must be set")?;
+        let session_secret = session_secret.as_bytes().to_vec();
+
+        // Server Side key for refresh token hashing
+        let refresh_secret =
+            std::env::var("REFRESH_SECRET").context("REFRESH_SECRET must be set")?;
+        let refresh_secret = refresh_secret.as_bytes().to_vec();
 
         let log_level = std::env::var("LOG_LEVEL")
             .unwrap_or_else(|_| "info".to_string())
@@ -35,7 +41,8 @@ impl AppConfig {
             server_addr,
             database_url,
             is_dev,
-            secret_key,
+            access_secret: session_secret,
+            refresh_secret,
             log_level,
         })
     }
