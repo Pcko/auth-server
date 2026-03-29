@@ -5,14 +5,13 @@ use axum::http::request::Parts;
 use tower_cookies::Cookies;
 use uuid::Uuid;
 
-pub struct AuthSession {
-    pub session_id: Uuid,
+pub struct UserExtractor {
     pub user_id: Uuid,
 }
 
-pub const SESSION_COOKIE: &str = "session";
+pub const ACCESS_COOKIE_KEY: &str = "access";
 
-impl<S> FromRequestParts<S> for AuthSession
+impl<S> FromRequestParts<S> for UserExtractor
 where
     S: Send + Sync,
     AppState: FromRef<S>,
@@ -28,22 +27,20 @@ where
             .await
             .map_err(|_| unauthorized())?;
 
-        // get session token out of session cookie
+        // get access token out of access cookie
         let token = cookies
-            .get(SESSION_COOKIE)
+            .get(ACCESS_COOKIE_KEY)
             .map(|cookie| cookie.value().to_owned())
             .ok_or_else(|| unauthorized())?;
 
-        let session = app_state
+        let result = app_state
             .auth_service
-            .authenticate_session(&token, app_state.config.secret_key.as_ref())
-            .await
-            .map_err(|_| unauthorized())?;
+            .verify_token(&*token, app_state.config.access_secret.as_slice())
+            .await?;
 
         // Return data for routes
-        Ok(AuthSession {
-            user_id: session.user_id.as_uuid(),
-            session_id: session.id.as_uuid(),
+        Ok(UserExtractor {
+            user_id: result.uid,
         })
     }
 }

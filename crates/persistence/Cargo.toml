@@ -11,3 +11,4 @@ diesel-async.workspace = true
 uuid.workspace = true
 time.workspace = true
 tracing.workspace = true
+serde.workspace = true
