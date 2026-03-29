@@ -33,7 +33,7 @@ impl From<SessionRow> for Session {
     fn from(row: SessionRow) -> Self {
         Session {
             id: SessionId::new(row.id),
-            user_id: UserId::new(row.uid),
+            uid: UserId::new(row.uid),
             token_hash: row.token_hash,
             created_at: row.created_at,
             last_seen_at: row.last_seen_at,
