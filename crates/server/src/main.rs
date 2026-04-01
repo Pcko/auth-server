@@ -1,6 +1,7 @@
 mod diesel_logging;
 
 use anyhow::Result;
+use application::services::admin_service::AdminService;
 use application::services::auth_service::AuthService;
 use application::services::session_service::SessionService;
 use application::services::token_service::TokenService;
@@ -63,6 +64,7 @@ fn build_app(pool: Pool<AsyncPgConnection>, config: AppConfig) -> AppState {
         token_service.clone(),
     ));
     let user_service = Arc::new(UserService::new(user_repo.clone()));
+    let admin_service = Arc::new(AdminService::new(user_repo.clone()));
 
     AppState {
         pool: pool,
@@ -70,6 +72,7 @@ fn build_app(pool: Pool<AsyncPgConnection>, config: AppConfig) -> AppState {
         user_service: user_service,
         config: config,
         session_service: session_service,
+        admin_service: admin_service,
     }
 }
 

@@ -106,6 +106,26 @@ impl UserRepository for DieselUserRepository {
 
         Ok(users)
     }
+
+    async fn update(&self, given_usr: User) -> Result<User, UserRepositoryError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| UserRepositoryError::Unexpected(e.to_string()))?;
+
+        let uid = given_usr.uid.as_uuid();
+        let changes: UserRow = given_usr.into();
+
+        let updated_usr = diesel::update(user.find(uid))
+            .set(changes)
+            .returning(UserRow::as_returning())
+            .get_result::<UserRow>(&mut conn)
+            .await
+            .map_err(|e| UserRepositoryError::Unexpected(e.to_string()))?;
+
+        Ok(updated_usr.into())
+    }
 }
 
 /**

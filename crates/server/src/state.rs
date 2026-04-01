@@ -5,6 +5,7 @@ use application::services::user_service::UserService;
 use diesel_async::AsyncPgConnection;
 use diesel_async::pooled_connection::bb8::Pool;
 use std::sync::Arc;
+use application::services::admin_service::AdminService;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -13,4 +14,5 @@ pub struct AppState {
     pub auth_service: Arc<AuthService>,
     pub user_service: Arc<UserService>,
     pub session_service: Arc<SessionService>,
+    pub admin_service: Arc<AdminService>,
 }

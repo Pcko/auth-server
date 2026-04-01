@@ -20,4 +20,5 @@ pub trait UserRepository: Send + Sync {
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, UserRepositoryError>;
     async fn save(&self, user: &NewUser) -> Result<User, UserRepositoryError>;
     async fn find_all(&self) -> Result<Vec<User>, UserRepositoryError>;
+    async fn update(&self, user: User) -> Result<User, UserRepositoryError>;
 }

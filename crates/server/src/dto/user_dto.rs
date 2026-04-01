@@ -16,7 +16,7 @@ impl From<User> for UserResponseDTO {
         Self {
             id: user.uid.as_uuid(),
             username: user.uname,
-            email: user.umail,
+            email: user.email,
             created_at: user.created_at,
         }
     }

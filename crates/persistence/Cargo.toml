@@ -8,7 +8,7 @@ domain = { path = "../domain" }
 async-trait.workspace = true
 diesel.workspace = true
 diesel-async.workspace = true
+diesel-derive-enum.workspace = true
 uuid.workspace = true
 time.workspace = true
 tracing.workspace = true
-serde.workspace = true

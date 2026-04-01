@@ -86,6 +86,7 @@ impl AuthService {
             name: username,
             email: email,
             password_hash: password_hash,
+            role: None,
         };
 
         let user = self

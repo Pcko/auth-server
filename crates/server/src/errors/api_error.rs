@@ -1,6 +1,7 @@
+use application::services::admin_service::AdminError;
 use application::services::auth_service::AuthError;
 use application::services::session_service::SessionError;
-
+use application::services::user_service::UserError;
 /***
    ApiError serves to translate DB Errors from the persistence layer to server layer errors
 */
@@ -44,6 +45,24 @@ impl From<SessionError> for ApiError {
             SessionError::SessionRepo(_) | SessionError::Unexpected => {
                 ApiError::InternalServerError("Internal server error".to_string())
             }
+        }
+    }
+}
+
+impl From<UserError> for ApiError {
+    fn from(error: UserError) -> Self {
+        match error {
+            UserError::Unexpected(_) | UserError::Repo(_) => {
+                ApiError::InternalServerError("Internal server error".to_string())
+            }
+        }
+    }
+}
+
+impl From<AdminError> for ApiError {
+    fn from(error: AdminError) -> Self {
+        match error {
+            AdminError::Unexpected => ApiError::InternalServerError("Internal server error".to_string()),
         }
     }
 }

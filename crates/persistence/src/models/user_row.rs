@@ -1,18 +1,21 @@
+use crate::models::user_role::UserRoleDB;
 use crate::schema::user;
-use diesel::{Insertable, Queryable, Selectable};
+use diesel::{AsChangeset, Insertable, Queryable, Selectable};
 use domain::model::user::{NewUser, User, UserId};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-#[derive(Debug, Queryable, Selectable)]
+#[derive(Debug, Queryable, Selectable, AsChangeset)]
 #[diesel(table_name = user)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct UserRow {
+    #[diesel(skip_update)]
     pub id: Uuid,
     pub name: String,
     pub email: String,
     pub password_hash: String,
     pub created_at: OffsetDateTime,
+    pub role: UserRoleDB,
 }
 
 #[derive(Debug, Insertable)]
@@ -21,6 +24,7 @@ pub struct NewUserRow<'a> {
     pub name: &'a str,
     pub email: &'a str,
     pub password_hash: &'a str,
+    pub role: Option<UserRoleDB>,
 }
 
 impl From<UserRow> for User {
@@ -28,9 +32,23 @@ impl From<UserRow> for User {
         User {
             uid: UserId::new(row.id),
             uname: row.name,
-            umail: row.email,
+            email: row.email,
             password_hash: row.password_hash,
             created_at: row.created_at,
+            role: row.role.into_domain(),
+        }
+    }
+}
+
+impl Into<UserRow> for User {
+    fn into(self) -> UserRow {
+        UserRow{
+            id: self.uid.as_uuid(),
+            name: self.uname,
+            email: self.email,
+            password_hash: self.password_hash,
+            created_at: self.created_at,
+            role: self.role.into(),
         }
     }
 }
@@ -41,6 +59,7 @@ impl<'a> From<&'a NewUser> for NewUserRow<'a> {
             name: &usr.name,
             email: &usr.email,
             password_hash: &usr.password_hash,
+            role: usr.role.map(UserRoleDB::from),
         }
     }
 }
