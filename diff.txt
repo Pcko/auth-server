@@ -1,0 +1,647 @@
+diff --git a/Cargo.lock b/Cargo.lock
+index 3d17f58..11da666 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -1356,6 +1356,7 @@ dependencies = [
+  "persistence",
+  "secrecy",
+  "serde",
++ "time",
+  "tokio",
+  "tower",
+  "tower-cookies",
+diff --git a/crates/application/src/services/auth_service.rs b/crates/application/src/services/auth_service.rs
+index 2f05820..240dc69 100644
+--- a/crates/application/src/services/auth_service.rs
++++ b/crates/application/src/services/auth_service.rs
+@@ -3,7 +3,7 @@ use crate::utils::token_handler::TokenHandler;
+ use argon2::password_hash::phc::PasswordHash;
+ use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+ use domain::model::request_info::RequestInfo;
+-use domain::model::session::NewSession;
++use domain::model::session::{NewSession, SessionId};
+ use domain::model::user::{NewUser, User};
+ use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
+ use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
+@@ -11,7 +11,7 @@ use secrecy::{ExposeSecret, SecretString};
+ use std::sync::Arc;
+ use thiserror::Error;
+ use time::{Duration, OffsetDateTime};
+-use tracing::{error, info, instrument};
++use tracing::{error, info, instrument, warn};
+ use uuid::Uuid;
+ 
+ // DI per Domain UserRepository so the service doesn't know about diesel
+@@ -195,18 +195,80 @@ impl AuthService {
+         Ok(())
+     }
+ 
+-    #[instrument(name = "auth.logout", skip(self, token, secret))]
+-    pub async fn logout(&self, token: String, secret: &[u8]) -> Result<(), AuthError> {
+-        // TODO use sid in access token to find session first for consistency
+-        let token_hash = TokenHandler::hash_token(&token, secret);
+-        self.session_repo
+-            .delete_by_token_hash(token_hash)
+-            .await
+-            .map_err(AuthError::SessionRepo)?;
++    #[instrument(
++        name = "auth.logout",
++        skip(self, access_cookie, access_secret, refresh_token, refresh_secret)
++    )]
++    pub async fn logout(
++        &self,
++        access_cookie: Option<String>,
++        access_secret: &[u8],
++        refresh_token: Option<String>,
++        refresh_secret: &[u8],
++    ) -> Result<(), AuthError> {
++        // extract sid from access token if exists
++        let sid_opt = match access_cookie.as_deref() {
++            Some(access_token) if !access_token.is_empty() => self
++                .token_service
++                .verify_access_token(access_token, access_secret)
++                .await
++                .ok()
++                .map(|claims| SessionId::new(claims.sid)),
++            _ => None,
++        };
++
++        // get session from refresh token if exists
++        let session_opt = match refresh_token.as_deref() {
++            Some(refresh_token) if !refresh_token.is_empty() => {
++                let token_hash = TokenHandler::hash_token(refresh_token, refresh_secret);
++
++                self.session_repo
++                    .find_by_token_hash(token_hash)
++                    .await
++                    .map_err(AuthError::SessionRepo)?
++            }
++            _ => None,
++        };
++
++        // if a session rly exists delete token
++        if let Some(session) = session_opt {
++            // if sid of both tokens dont match up
++            if let Some(sid) = sid_opt {
++                if sid != session.id {
++                    // TODO implement suspicious flagging or smth
++                    warn!("user {0}: logout token mismatch", session.uid)
++                }
++            }
++
++            match self.session_repo.delete_by_id(session.id).await {
++                Ok(_) | Err(SessionRepositoryError::NotFound) => {}
++                Err(err) => return Err(AuthError::SessionRepo(err)),
++            }
++
++            info!("session {} was deleted", session.id);
++            return Ok(());
++        }
+ 
+         Ok(())
+     }
+ 
++    async fn sid_from_refresh_token(
++        &self,
++        refresh_token: &String,
++        refresh_secret: &[u8],
++    ) -> Result<SessionId, AuthError> {
++        let refresh_token_hash = TokenHandler::hash_token(refresh_token.as_str(), refresh_secret);
++
++        let session = self
++            .session_repo
++            .find_by_token_hash(refresh_token_hash)
++            .await
++            .map_err(AuthError::SessionRepo)?
++            .ok_or(AuthError::InvalidSession)?;
++
++        Ok(session.id)
++    }
++
+     #[instrument(name = "auth.verify_token", skip(self, access_token, secret))]
+     pub async fn verify_token(
+         &self,
+@@ -287,6 +349,16 @@ impl AuthService {
+             refresh_expires_at: result.session.expires_at,
+         })
+     }
++
++
++    pub async fn is_admin(&self, access_token: &str, access_secret : &[u8]) -> bool {
++        let claims = self.token_service
++            .verify_access_token(access_token, access_secret)
++            .await
++            .map_err(AuthError::Token);
++
++       if claims.is_ok() { claims.unwrap().is_admin } else { false }
++    }
+ }
+ 
+ #[derive(Debug, Error)]
+@@ -311,4 +383,6 @@ pub enum AuthError {
+     Unexpected(String),
+     #[error("token error: {0}")]
+     Token(#[from] TokenError),
++    #[error("invalid session error")]
++    InvalidSession,
+ }
+diff --git a/crates/application/src/services/mod.rs b/crates/application/src/services/mod.rs
+index edce6af..36feb4c 100644
+--- a/crates/application/src/services/mod.rs
++++ b/crates/application/src/services/mod.rs
+@@ -1,3 +1,4 @@
+ pub mod auth_service;
+ pub mod token_service;
+ pub mod user_service;
++pub mod session_service;
+diff --git a/crates/application/src/services/token_service.rs b/crates/application/src/services/token_service.rs
+index 89f8d9f..a25759e 100644
+--- a/crates/application/src/services/token_service.rs
++++ b/crates/application/src/services/token_service.rs
+@@ -1,10 +1,8 @@
+-use crate::services::auth_service::RefreshResult;
+ use crate::utils::token_handler::TokenHandler;
+-use core::num;
+ use domain::model::claims::Claims;
+ use domain::model::session::{Session, SessionId};
+ use domain::repositories::session_repository::SessionRepository;
+-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
++use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+ use secrecy::{ExposeSecret, SecretBox, SecretString};
+ use std::ops::Add;
+ use std::sync::Arc;
+diff --git a/crates/application/src/services/user_service.rs b/crates/application/src/services/user_service.rs
+index acc8363..32b0a3c 100644
+--- a/crates/application/src/services/user_service.rs
++++ b/crates/application/src/services/user_service.rs
+@@ -1,7 +1,5 @@
+-use crate::services::user_service::UserError::Repo;
+ use domain::model::user::{User, UserId};
+ use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
+-use std::str::FromStr;
+ use std::sync::Arc;
+ use thiserror::Error;
+ use uuid::Uuid;
+@@ -21,13 +19,10 @@ impl UserService {
+         Ok(result?)
+     }
+ 
+-    pub async fn get_user(&self, id: u64) -> Result<User, UserError> {
+-        let uid = Uuid::from_str(id.to_string().as_str())
+-            .map_err(|_| UserError::Unexpected("User ID could not be parsed".to_string()))?;
+-
++    pub async fn get_user(&self, id: Uuid) -> Result<User, UserError> {
+         let user = self
+             .repo
+-            .find_by_id(UserId::new(uid))
++            .find_by_id(UserId::new(id))
+             .await
+             .map_err(|err| UserError::Repo(err))?;
+ 
+diff --git a/crates/application/src/utils/token_handler.rs b/crates/application/src/utils/token_handler.rs
+index 2982459..a6264a0 100644
+--- a/crates/application/src/utils/token_handler.rs
++++ b/crates/application/src/utils/token_handler.rs
+@@ -1,9 +1,6 @@
+-use argon2::{PasswordHash, PasswordHasher};
+ use base64::prelude::*;
+-use hmac::digest::Digest;
+ use hmac::{Hmac, Mac};
+ use rand::Rng;
+-use secrecy::{ExposeSecret, SecretString};
+ use sha2::Sha256;
+ 
+ #[derive(Debug)]
+diff --git a/crates/domain/src/model/claims.rs b/crates/domain/src/model/claims.rs
+index 52d75fe..0756582 100644
+--- a/crates/domain/src/model/claims.rs
++++ b/crates/domain/src/model/claims.rs
+@@ -20,6 +20,7 @@ pub struct Claims {
+     pub exp: OffsetDateTime,
+     pub aud: String,
+     pub sid: Uuid,
++    pub is_admin: bool,
+ }
+ 
+ impl Claims {
+@@ -35,6 +36,8 @@ impl Claims {
+             exp: exp,
+             aud: aud,
+             sid: sid,
++            // TODO implementiere admin system
++            is_admin: false,
+         }
+     }
+ }
+diff --git a/crates/domain/src/model/request_info.rs b/crates/domain/src/model/request_info.rs
+index 4a5e7c3..89bd454 100644
+--- a/crates/domain/src/model/request_info.rs
++++ b/crates/domain/src/model/request_info.rs
+@@ -1,5 +1,3 @@
+-use std::net::IpAddr;
+-
+ #[derive(Debug, Clone)]
+ pub struct RequestInfo {
+     pub url: String,
+diff --git a/crates/domain/src/model/user.rs b/crates/domain/src/model/user.rs
+index 8ec0e4f..bc02a2c 100644
+--- a/crates/domain/src/model/user.rs
++++ b/crates/domain/src/model/user.rs
+@@ -1,6 +1,3 @@
+-use crate::model::session::SessionId;
+-use crate::model::user_type::UserType;
+-use serde::{Deserialize, Serialize};
+ use std::fmt;
+ use std::fmt::{Display, Formatter};
+ use time::OffsetDateTime;
+diff --git a/crates/domain/src/repositories/session_repository.rs b/crates/domain/src/repositories/session_repository.rs
+index c3602d3..bf77f6e 100644
+--- a/crates/domain/src/repositories/session_repository.rs
++++ b/crates/domain/src/repositories/session_repository.rs
+@@ -11,23 +11,26 @@ pub enum SessionRepositoryError {
+     #[error("unexpected: {0}")]
+     Unexpected(String),
+ }
+-
+ #[async_trait::async_trait]
+ pub trait SessionRepository: Send + Sync {
+     async fn find_by_id(&self, id: SessionId) -> Result<Option<Session>, SessionRepositoryError>;
+-    async fn find_by_uid(&self, uid: UserId) -> Result<Option<Session>, SessionRepositoryError>;
++
++    async fn find_by_uid(&self, uid: UserId) -> Result<Vec<Session>, SessionRepositoryError>;
++
+     async fn insert(&self, session: NewSession) -> Result<Session, SessionRepositoryError>;
+     async fn delete_by_id(&self, session_id: SessionId) -> Result<(), SessionRepositoryError>;
+     async fn delete_by_uid(&self, uid: UserId) -> Result<(), SessionRepositoryError>;
+     async fn delete_by_token_hash(&self, token_hash: String) -> Result<(), SessionRepositoryError>;
++
+     async fn find_by_token_hash(
+         &self,
+         token_hash: String,
+     ) -> Result<Option<Session>, SessionRepositoryError>;
+ 
+     async fn find_all(&self) -> Result<Vec<Session>, SessionRepositoryError>;
++
+     async fn update_refresh_token_data(
+         &self,
+         session: Session,
+     ) -> Result<Session, SessionRepositoryError>;
+-}
++}
+\ No newline at end of file
+diff --git a/crates/persistence/src/repositories/session_repository.rs b/crates/persistence/src/repositories/session_repository.rs
+index 3f32725..9a09977 100644
+--- a/crates/persistence/src/repositories/session_repository.rs
++++ b/crates/persistence/src/repositories/session_repository.rs
+@@ -50,21 +50,20 @@ impl SessionRepository for DieselSessionRepository {
+     async fn find_by_uid(
+         &self,
+         user_id: UserId,
+-    ) -> Result<Option<Session>, SessionRepositoryError> {
++    ) -> Result<Vec<Session>, SessionRepositoryError> {
+         let mut conn = self
+             .pool
+             .get()
+             .await
+             .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
+ 
+-        let row = sessions
++        let rows = sessions
+             .filter(uid.eq(user_id.as_uuid()))
+-            .first::<SessionRow>(&mut conn)
++            .load::<SessionRow>(&mut conn)
+             .await
+-            .optional()
+             .map_err(map_diesel_error)?;
+-
+-        Ok(row.map(Into::into))
++        
++        Ok(rows.into_iter().map(Into::into).collect())
+     }
+ 
+     async fn insert(&self, session: NewSession) -> Result<Session, SessionRepositoryError> {
+@@ -187,7 +186,7 @@ impl SessionRepository for DieselSessionRepository {
+             .await
+             .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
+ 
+-        let updated_row = update(sessions)
++        let updated_row = update(sessions.find(session.id.as_uuid()))
+             .set((
+                 token_hash.eq(session.token_hash),
+                 expires_at.eq(session.expires_at),
+diff --git a/crates/persistence/src/repositories/user_repository.rs b/crates/persistence/src/repositories/user_repository.rs
+index 9e3f9b3..e100088 100644
+--- a/crates/persistence/src/repositories/user_repository.rs
++++ b/crates/persistence/src/repositories/user_repository.rs
+@@ -1,13 +1,11 @@
+ use crate::models::user_row::{NewUserRow, UserRow};
+ use crate::schema;
+ use crate::schema::user::dsl::*;
++use diesel::QueryDsl;
+ use diesel::pg::Pg;
+ use diesel::result::{DatabaseErrorKind, Error as DieselError};
+ use diesel::{ExpressionMethods, OptionalExtension, SelectableHelper, debug_query};
+-use diesel::{Insertable, QueryDsl};
+-use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+ use diesel_async::pooled_connection::bb8::Pool;
+-use diesel_async::pooled_connection::bb8::PooledConnection;
+ use diesel_async::{AsyncPgConnection, RunQueryDsl};
+ use domain::model::user::{NewUser, User, UserId};
+ use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
+diff --git a/crates/server/Cargo.toml b/crates/server/Cargo.toml
+index 3203df7..6e54044 100644
+--- a/crates/server/Cargo.toml
++++ b/crates/server/Cargo.toml
+@@ -24,4 +24,5 @@ tower-http.workspace = true
+ http.workspace = true
+ tower.workspace = true
+ jsonwebtoken.workspace = true
+-secrecy.workspace = true
+\ No newline at end of file
++secrecy.workspace = true
++time.workspace = true
+\ No newline at end of file
+diff --git a/crates/server/src/dto/mod.rs b/crates/server/src/dto/mod.rs
+index dda6313..acee3a0 100644
+--- a/crates/server/src/dto/mod.rs
++++ b/crates/server/src/dto/mod.rs
+@@ -1,3 +1,4 @@
+ pub mod auth_dto;
+ pub mod register_dto;
+ pub mod user_dto;
++pub mod session_dto;
+diff --git a/crates/server/src/errors/api_error.rs b/crates/server/src/errors/api_error.rs
+index 9b76ab1..369375c 100644
+--- a/crates/server/src/errors/api_error.rs
++++ b/crates/server/src/errors/api_error.rs
+@@ -1,4 +1,5 @@
+ use application::services::auth_service::AuthError;
++use application::services::session_service::SessionError;
+ 
+ /***
+    ApiError serves to translate DB Errors from the persistence layer to server layer errors
+@@ -6,8 +7,10 @@ use application::services::auth_service::AuthError;
+ pub enum ApiError {
+     BadRequest(String),
+     Unauthorized(String),
++    Forbidden(String),
+     Conflict(String),
+     InternalServerError(String),
++    NotFound,
+ }
+ 
+ impl From<AuthError> for ApiError {
+@@ -28,6 +31,19 @@ impl From<AuthError> for ApiError {
+                 ApiError::InternalServerError("Internal server error".to_string())
+             }
+             AuthError::Token(_) => ApiError::Unauthorized("Token error".to_string()),
++            AuthError::InvalidSession => ApiError::Unauthorized("Session error".to_string()),
+         }
+     }
+ }
++
++impl From<SessionError> for ApiError {
++    fn from(error: SessionError) -> Self {
++        match error {
++            SessionError::NotFound => ApiError::NotFound,
++            SessionError::Forbidden => ApiError::Forbidden("Forbidden".to_string()),
++            SessionError::SessionRepo(_) | SessionError::Unexpected => {
++                ApiError::InternalServerError("Internal server error".to_string())
++            }
++        }
++    }
++}
+\ No newline at end of file
+diff --git a/crates/server/src/errors/error_body.rs b/crates/server/src/errors/error_body.rs
+index deb3e1f..f231831 100644
+--- a/crates/server/src/errors/error_body.rs
++++ b/crates/server/src/errors/error_body.rs
+@@ -30,6 +30,10 @@ impl IntoResponse for ApiError {
+             ApiError::Conflict(msg) => {
+                 (StatusCode::CONFLICT, Json(ErrorBody { message: msg })).into_response()
+             }
++            ApiError::Forbidden(msg) => {
++                (StatusCode::FORBIDDEN, Json(ErrorBody { message: msg })).into_response()
++            }
++            ApiError::NotFound => StatusCode::NOT_FOUND.into_response(),
+         }
+     }
+ }
+diff --git a/crates/server/src/main.rs b/crates/server/src/main.rs
+index 0016e3e..9bbafec 100644
+--- a/crates/server/src/main.rs
++++ b/crates/server/src/main.rs
+@@ -2,6 +2,7 @@ mod diesel_logging;
+ 
+ use anyhow::Result;
+ use application::services::auth_service::AuthService;
++use application::services::session_service::SessionService;
+ use application::services::token_service::TokenService;
+ use application::services::user_service::UserService;
+ use diesel::connection::set_default_instrumentation;
+@@ -14,7 +15,7 @@ use server::config::AppConfig;
+ use server::router::app;
+ use server::state::AppState;
+ use std::sync::Arc;
+-use tracing::{Level, event, info};
++use tracing::info;
+ use tracing_appender::rolling;
+ use tracing_subscriber::EnvFilter;
+ use tracing_subscriber::layer::SubscriberExt;
+@@ -49,10 +50,12 @@ async fn main() -> Result<()> {
+ }
+ 
+ fn build_app(pool: Pool<AsyncPgConnection>, config: AppConfig) -> AppState {
+-    // Arc = smart pointer, so basically auth service and user service reference the same user repo
++    // Arc = atomic(thread safe) smart pointer, so basically auth service and user service reference the same user repo
++    // Repos
+     let user_repo = Arc::new(DieselUserRepository::new(pool.clone()));
+     let session_repo = Arc::new(DieselSessionRepository::new(pool.clone()));
+-    // we only clone the Arc it still points to the same repo
++    // Services
++    let session_service = Arc::new(SessionService::new(session_repo.clone()));
+     let token_service = Arc::new(TokenService::new(session_repo.clone()));
+     let auth_service = Arc::new(AuthService::new(
+         user_repo.clone(),
+@@ -66,6 +69,7 @@ fn build_app(pool: Pool<AsyncPgConnection>, config: AppConfig) -> AppState {
+         auth_service: auth_service,
+         user_service: user_service,
+         config: config,
++        session_service: session_service,
+     }
+ }
+ 
+diff --git a/crates/server/src/middleware/mod.rs b/crates/server/src/middleware/mod.rs
+index 53cc83a..8fea674 100644
+--- a/crates/server/src/middleware/mod.rs
++++ b/crates/server/src/middleware/mod.rs
+@@ -1,2 +1,3 @@
+ pub mod request_info_extractor;
+ pub mod user_extractor;
++pub mod admin_extractor;
+diff --git a/crates/server/src/middleware/user_extractor.rs b/crates/server/src/middleware/user_extractor.rs
+index becc173..a3b68ee 100644
+--- a/crates/server/src/middleware/user_extractor.rs
++++ b/crates/server/src/middleware/user_extractor.rs
+@@ -6,7 +6,7 @@ use tower_cookies::Cookies;
+ use uuid::Uuid;
+ 
+ pub struct UserExtractor {
+-    pub user_id: Uuid,
++    pub uid: Uuid,
+ }
+ 
+ pub const ACCESS_COOKIE_KEY: &str = "access";
+@@ -40,7 +40,7 @@ where
+ 
+         // Return data for routes
+         Ok(UserExtractor {
+-            user_id: result.uid,
++            uid: result.uid,
+         })
+     }
+ }
+diff --git a/crates/server/src/router.rs b/crates/server/src/router.rs
+index 2b5f13e..1800fbf 100644
+--- a/crates/server/src/router.rs
++++ b/crates/server/src/router.rs
+@@ -1,6 +1,7 @@
++use crate::middleware::admin_extractor::AdminExtractor;
+ use crate::middleware::request_info_extractor::ExtractRequestInfo;
+ use crate::middleware::user_extractor::UserExtractor;
+-use crate::routes::{auth, health, user};
++use crate::routes::{auth, health, session, user};
+ use crate::state::AppState;
+ use axum::{Router, http, middleware};
+ use tower::ServiceBuilder;
+@@ -25,7 +26,7 @@ pub fn app(state: AppState) -> Router {
+         .layer(TraceLayer::new_for_http());
+ 
+     // feature specific
+-    let users = user::router().route_layer(
++    let user_router = user::router().route_layer(
+         ServiceBuilder::new()
+             .layer(middleware::from_extractor_with_state::<ExtractRequestInfo, _>(state.clone()))
+             .layer(middleware::from_extractor_with_state::<UserExtractor, _>(
+@@ -33,12 +34,21 @@ pub fn app(state: AppState) -> Router {
+             )),
+     );
+ 
++    let admin_layer = ServiceBuilder::new()
++        .layer(middleware::from_extractor_with_state::<AdminExtractor, _>(
++            state.clone(),
++        ));
++
+     // admin routes
+-    let admin_router = Router::new().nest("/users", users);
++    let admin_router = Router::new()
++        .nest("/users", user_router)
++        .nest("/sessions", session::admin_session_router())
++        .layer(admin_layer);
+ 
+     Router::new()
+         .nest("/auth", auth::router())
+-        .merge(admin_router)
++        .nest("/admin", admin_router)
++        .nest("/sessions", session::user_session_router())
+         .merge(health::router())
+         .layer(infra_layer)
+         .with_state(state)
+diff --git a/crates/server/src/routes/auth.rs b/crates/server/src/routes/auth.rs
+index 1ea9ae8..76a7f26 100644
+--- a/crates/server/src/routes/auth.rs
++++ b/crates/server/src/routes/auth.rs
+@@ -73,17 +73,16 @@ async fn logout(
+     State(state): State<AppState>,
+     cookies: Cookies,
+ ) -> Result<impl IntoResponse, ApiError> {
+-    let revoke_result = if let Some(refresh) = cookies.get("refresh") {
++    let revoke_result =
+         state
+             .auth_service
+             .logout(
+-                refresh.value().to_string(),
++                cookies.get("access").map(|c| c.value().to_string()),
++                state.config.access_secret.as_ref(),
++                cookies.get("refresh").map(|c| c.value().to_string()),
+                 state.config.refresh_secret.as_ref(),
+             )
+-            .await
+-    } else {
+-        Ok(())
+-    };
++            .await;
+ 
+     let mut access_token_removal = Cookie::new("access", "");
+     remove_cookie(&state, &mut access_token_removal);
+diff --git a/crates/server/src/routes/mod.rs b/crates/server/src/routes/mod.rs
+index 76bc24d..7dd3691 100644
+--- a/crates/server/src/routes/mod.rs
++++ b/crates/server/src/routes/mod.rs
+@@ -1,3 +1,4 @@
+ pub mod auth;
+ pub mod health;
+ pub mod user;
++pub mod session;
+diff --git a/crates/server/src/routes/user.rs b/crates/server/src/routes/user.rs
+index 4f47c58..a320267 100644
+--- a/crates/server/src/routes/user.rs
++++ b/crates/server/src/routes/user.rs
+@@ -7,6 +7,7 @@ use axum::routing::get;
+ use axum::{Json, Router};
+ use domain::repositories::user_repository::UserRepository;
+ use persistence::repositories::user_repository::DieselUserRepository;
++use uuid::Uuid;
+ 
+ async fn get_users(
+     State(state): State<AppState>,
+@@ -28,7 +29,7 @@ async fn get_users(
+ 
+ async fn get_user(
+     state: State<AppState>,
+-    Path(id): Path<u64>,
++    Path(id): Path<Uuid>,
+ ) -> Result<impl IntoResponse, StatusCode> {
+     let user = state
+         .user_service
+diff --git a/crates/server/src/state.rs b/crates/server/src/state.rs
+index ef1097c..d1939c9 100644
+--- a/crates/server/src/state.rs
++++ b/crates/server/src/state.rs
+@@ -4,6 +4,7 @@ use application::services::user_service::UserService;
+ use diesel_async::AsyncPgConnection;
+ use diesel_async::pooled_connection::bb8::Pool;
+ use std::sync::Arc;
++use application::services::session_service::SessionService;
+ 
+ #[derive(Clone)]
+ pub struct AppState {
+@@ -11,4 +12,5 @@ pub struct AppState {
+     pub config: AppConfig,
+     pub auth_service: Arc<AuthService>,
+     pub user_service: Arc<UserService>,
++    pub session_service: Arc<SessionService>,
+ }
+diff --git a/migrations/2026-03-07-182102-0000_create_sessions/up.sql b/migrations/2026-03-07-182102-0000_create_sessions/up.sql
+index cbfa4f6..cc8fa59 100644
+--- a/migrations/2026-03-07-182102-0000_create_sessions/up.sql
++++ b/migrations/2026-03-07-182102-0000_create_sessions/up.sql
+@@ -2,7 +2,7 @@
+ CREATE TABLE sessions
+ (
+     id           UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
+-    uid          UUID        NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
++    uid          UUID NOT NULL REFERENCES "user" (id) ON DELETE CASCADE,
+     token_hash   TEXT        NOT NULL UNIQUE,
+     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+     expires_at   TIMESTAMPTZ NOT NULL,
+@@ -10,4 +10,6 @@ CREATE TABLE sessions
+     revoked_at   TIMESTAMPTZ NULL,
+     user_agent   TEXT NULL,
+     ip_address   TEXT NULL
+-);
+\ No newline at end of file
++);
++
++CREATE INDEX idx_sessions_uid ON sessions(uid);
+\ No newline at end of file
