@@ -73,17 +73,16 @@ async fn logout(
     State(state): State<AppState>,
     cookies: Cookies,
 ) -> Result<impl IntoResponse, ApiError> {
-    let revoke_result = if let Some(refresh) = cookies.get("refresh") {
+    let revoke_result =
         state
             .auth_service
             .logout(
-                refresh.value().to_string(),
+                cookies.get("access").map(|c| c.value().to_string()),
+                state.config.access_secret.as_ref(),
+                cookies.get("refresh").map(|c| c.value().to_string()),
                 state.config.refresh_secret.as_ref(),
             )
-            .await
-    } else {
-        Ok(())
-    };
+            .await;
 
     let mut access_token_removal = Cookie::new("access", "");
     remove_cookie(&state, &mut access_token_removal);

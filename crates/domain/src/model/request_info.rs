@@ -1,5 +1,3 @@
-use std::net::IpAddr;
-
 #[derive(Debug, Clone)]
 pub struct RequestInfo {
     pub url: String,

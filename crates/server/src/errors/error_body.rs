@@ -30,6 +30,10 @@ impl IntoResponse for ApiError {
             ApiError::Conflict(msg) => {
                 (StatusCode::CONFLICT, Json(ErrorBody { message: msg })).into_response()
             }
+            ApiError::Forbidden(msg) => {
+                (StatusCode::FORBIDDEN, Json(ErrorBody { message: msg })).into_response()
+            }
+            ApiError::NotFound => StatusCode::NOT_FOUND.into_response(),
         }
     }
 }

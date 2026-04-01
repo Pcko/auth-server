@@ -1,13 +1,11 @@
 use crate::models::user_row::{NewUserRow, UserRow};
 use crate::schema;
 use crate::schema::user::dsl::*;
+use diesel::QueryDsl;
 use diesel::pg::Pg;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use diesel::{ExpressionMethods, OptionalExtension, SelectableHelper, debug_query};
-use diesel::{Insertable, QueryDsl};
-use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::pooled_connection::bb8::Pool;
-use diesel_async::pooled_connection::bb8::PooledConnection;
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use domain::model::user::{NewUser, User, UserId};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};

@@ -7,6 +7,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use domain::repositories::user_repository::UserRepository;
 use persistence::repositories::user_repository::DieselUserRepository;
+use uuid::Uuid;
 
 async fn get_users(
     State(state): State<AppState>,
@@ -28,7 +29,7 @@ async fn get_users(
 
 async fn get_user(
     state: State<AppState>,
-    Path(id): Path<u64>,
+    Path(id): Path<Uuid>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let user = state
         .user_service

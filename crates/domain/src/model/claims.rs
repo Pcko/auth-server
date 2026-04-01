@@ -20,6 +20,7 @@ pub struct Claims {
     pub exp: OffsetDateTime,
     pub aud: String,
     pub sid: Uuid,
+    pub is_admin: bool,
 }
 
 impl Claims {
@@ -35,6 +36,8 @@ impl Claims {
             exp: exp,
             aud: aud,
             sid: sid,
+            // TODO implementiere admin system
+            is_admin: false,
         }
     }
 }

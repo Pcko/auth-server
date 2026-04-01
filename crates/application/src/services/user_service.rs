@@ -1,7 +1,5 @@
-use crate::services::user_service::UserError::Repo;
 use domain::model::user::{User, UserId};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
-use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
@@ -21,13 +19,10 @@ impl UserService {
         Ok(result?)
     }
 
-    pub async fn get_user(&self, id: u64) -> Result<User, UserError> {
-        let uid = Uuid::from_str(id.to_string().as_str())
-            .map_err(|_| UserError::Unexpected("User ID could not be parsed".to_string()))?;
-
+    pub async fn get_user(&self, id: Uuid) -> Result<User, UserError> {
         let user = self
             .repo
-            .find_by_id(UserId::new(uid))
+            .find_by_id(UserId::new(id))
             .await
             .map_err(|err| UserError::Repo(err))?;
 

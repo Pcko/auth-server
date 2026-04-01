@@ -3,7 +3,7 @@ use crate::utils::token_handler::TokenHandler;
 use argon2::password_hash::phc::PasswordHash;
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
 use domain::model::request_info::RequestInfo;
-use domain::model::session::NewSession;
+use domain::model::session::{NewSession, SessionId};
 use domain::model::user::{NewUser, User};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use domain::repositories::user_repository::{UserRepository, UserRepositoryError};
@@ -11,7 +11,7 @@ use secrecy::{ExposeSecret, SecretString};
 use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
-use tracing::{error, info, instrument};
+use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
 
 // DI per Domain UserRepository so the service doesn't know about diesel
@@ -195,16 +195,78 @@ impl AuthService {
         Ok(())
     }
 
-    #[instrument(name = "auth.logout", skip(self, token, secret))]
-    pub async fn logout(&self, token: String, secret: &[u8]) -> Result<(), AuthError> {
-        // TODO use sid in access token to find session first for consistency
-        let token_hash = TokenHandler::hash_token(&token, secret);
-        self.session_repo
-            .delete_by_token_hash(token_hash)
-            .await
-            .map_err(AuthError::SessionRepo)?;
+    #[instrument(
+        name = "auth.logout",
+        skip(self, access_cookie, access_secret, refresh_token, refresh_secret)
+    )]
+    pub async fn logout(
+        &self,
+        access_cookie: Option<String>,
+        access_secret: &[u8],
+        refresh_token: Option<String>,
+        refresh_secret: &[u8],
+    ) -> Result<(), AuthError> {
+        // extract sid from access token if exists
+        let sid_opt = match access_cookie.as_deref() {
+            Some(access_token) if !access_token.is_empty() => self
+                .token_service
+                .verify_access_token(access_token, access_secret)
+                .await
+                .ok()
+                .map(|claims| SessionId::new(claims.sid)),
+            _ => None,
+        };
+
+        // get session from refresh token if exists
+        let session_opt = match refresh_token.as_deref() {
+            Some(refresh_token) if !refresh_token.is_empty() => {
+                let token_hash = TokenHandler::hash_token(refresh_token, refresh_secret);
+
+                self.session_repo
+                    .find_by_token_hash(token_hash)
+                    .await
+                    .map_err(AuthError::SessionRepo)?
+            }
+            _ => None,
+        };
+
+        // if a session rly exists delete token
+        if let Some(session) = session_opt {
+            // if sid of both tokens dont match up
+            if let Some(sid) = sid_opt {
+                if sid != session.id {
+                    // TODO implement suspicious flagging or smth
+                    warn!("user {0}: logout token mismatch", session.uid)
+                }
+            }
+
+            match self.session_repo.delete_by_id(session.id).await {
+                Ok(_) | Err(SessionRepositoryError::NotFound) => {}
+                Err(err) => return Err(AuthError::SessionRepo(err)),
+            }
+
+            info!("session {} was deleted", session.id);
+            return Ok(());
+        }
 
         Ok(())
+    }
+
+    async fn sid_from_refresh_token(
+        &self,
+        refresh_token: &String,
+        refresh_secret: &[u8],
+    ) -> Result<SessionId, AuthError> {
+        let refresh_token_hash = TokenHandler::hash_token(refresh_token.as_str(), refresh_secret);
+
+        let session = self
+            .session_repo
+            .find_by_token_hash(refresh_token_hash)
+            .await
+            .map_err(AuthError::SessionRepo)?
+            .ok_or(AuthError::InvalidSession)?;
+
+        Ok(session.id)
     }
 
     #[instrument(name = "auth.verify_token", skip(self, access_token, secret))]
@@ -287,6 +349,16 @@ impl AuthService {
             refresh_expires_at: result.session.expires_at,
         })
     }
+
+
+    pub async fn is_admin(&self, access_token: &str, access_secret : &[u8]) -> bool {
+        let claims = self.token_service
+            .verify_access_token(access_token, access_secret)
+            .await
+            .map_err(AuthError::Token);
+
+       if claims.is_ok() { claims.unwrap().is_admin } else { false }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -311,4 +383,6 @@ pub enum AuthError {
     Unexpected(String),
     #[error("token error: {0}")]
     Token(#[from] TokenError),
+    #[error("invalid session error")]
+    InvalidSession,
 }

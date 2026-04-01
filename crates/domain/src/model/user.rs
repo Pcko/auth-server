@@ -1,6 +1,3 @@
-use crate::model::session::SessionId;
-use crate::model::user_type::UserType;
-use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use time::OffsetDateTime;

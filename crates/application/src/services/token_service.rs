@@ -1,10 +1,8 @@
-use crate::services::auth_service::RefreshResult;
 use crate::utils::token_handler::TokenHandler;
-use core::num;
 use domain::model::claims::Claims;
 use domain::model::session::{Session, SessionId};
 use domain::repositories::session_repository::SessionRepository;
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::ops::Add;
 use std::sync::Arc;

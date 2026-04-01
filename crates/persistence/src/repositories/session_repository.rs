@@ -50,21 +50,20 @@ impl SessionRepository for DieselSessionRepository {
     async fn find_by_uid(
         &self,
         user_id: UserId,
-    ) -> Result<Option<Session>, SessionRepositoryError> {
+    ) -> Result<Vec<Session>, SessionRepositoryError> {
         let mut conn = self
             .pool
             .get()
             .await
             .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
 
-        let row = sessions
+        let rows = sessions
             .filter(uid.eq(user_id.as_uuid()))
-            .first::<SessionRow>(&mut conn)
+            .load::<SessionRow>(&mut conn)
             .await
-            .optional()
             .map_err(map_diesel_error)?;
-
-        Ok(row.map(Into::into))
+        
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 
     async fn insert(&self, session: NewSession) -> Result<Session, SessionRepositoryError> {
@@ -187,7 +186,7 @@ impl SessionRepository for DieselSessionRepository {
             .await
             .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
 
-        let updated_row = update(sessions)
+        let updated_row = update(sessions.find(session.id.as_uuid()))
             .set((
                 token_hash.eq(session.token_hash),
                 expires_at.eq(session.expires_at),
