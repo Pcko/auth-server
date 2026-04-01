@@ -31,16 +31,14 @@ where
         let token = cookies
             .get(ACCESS_COOKIE_KEY)
             .map(|cookie| cookie.value().to_owned())
-            .ok_or_else(|| unauthorized())?;
+            .ok_or_else(unauthorized)?;
 
         let result = app_state
             .auth_service
-            .verify_token(&*token, app_state.config.access_secret.as_slice())
+            .verify_token(&token, app_state.config.access_secret.as_slice())
             .await?;
 
         // Return data for routes
-        Ok(UserExtractor {
-            uid: result.uid,
-        })
+        Ok(UserExtractor { uid: result.uid })
     }
 }

@@ -2,7 +2,7 @@ use crate::utils::token_handler::TokenHandler;
 use domain::model::claims::Claims;
 use domain::model::session::{Session, SessionId};
 use domain::repositories::session_repository::SessionRepository;
-use jsonwebtoken::{decode, encode, Algorithm, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::ops::Add;
 use std::sync::Arc;
@@ -63,8 +63,7 @@ impl TokenService {
     */
     pub fn generate_refresh_token(&self) -> SecretBox<str> {
         let token = TokenHandler::generate_token();
-        let refresh_token = SecretString::new(token.into_boxed_str());
-        refresh_token
+        SecretString::new(token.into_boxed_str())
     }
 
     pub async fn verify_access_token(

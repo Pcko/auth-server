@@ -42,7 +42,7 @@ pub struct RefreshResult {
     pub refresh_expires_at: OffsetDateTime,
 }
 
-const ISSUER_NAME: &'static str = "AUTH_SERVER";
+const ISSUER_NAME: &str = "AUTH_SERVER";
 const ACCESS_TOKEN_DURATION: Duration = Duration::hours(1);
 const REFRESH_TOKEN_DURATION: Duration = Duration::days(30);
 
@@ -90,7 +90,7 @@ impl AuthService {
 
         let user = self
             .user_repo
-            .save(&new_row.into())
+            .save(&new_row)
             .await
             .map_err(AuthError::UserRepo)?;
 
@@ -108,7 +108,7 @@ impl AuthService {
         access_secret: &[u8],
         refresh_secret: &[u8],
     ) -> Result<LoginResult, AuthError> {
-        let _ = Self::validate_credentials(&email, &password)?;
+        Self::validate_credentials(&email, &password)?;
 
         // find User if error during search -> internal else if not a user then user with email doesn't exist
         let user = self
@@ -143,7 +143,7 @@ impl AuthService {
         let session = NewSession {
             uid: user.uid,
             expires_at: refresh_expires_at,
-            token_hash: String::from(refresh_token_hash),
+            token_hash: refresh_token_hash,
             user_agent: request_info.user_agent,
             ip_address: request_info.ip,
             revoked_at: None,
@@ -166,7 +166,7 @@ impl AuthService {
                 ACCESS_TOKEN_DURATION,
                 access_secret,
             )
-            .map_err(|err| AuthError::Token(err))?;
+            .map_err(AuthError::Token)?;
 
         info!(
             user_id = %user.uid.as_uuid(),
@@ -233,11 +233,11 @@ impl AuthService {
         // if a session rly exists delete token
         if let Some(session) = session_opt {
             // if sid of both tokens dont match up
-            if let Some(sid) = sid_opt {
-                if sid != session.id {
-                    // TODO implement suspicious flagging or smth
-                    warn!("user {0}: logout token mismatch", session.uid)
-                }
+            if let Some(sid) = sid_opt
+                && sid != session.id
+            {
+                // TODO implement suspicious flagging or smth
+                warn!("user {0}: logout token mismatch", session.uid)
             }
 
             match self.session_repo.delete_by_id(session.id).await {
@@ -254,10 +254,10 @@ impl AuthService {
 
     async fn sid_from_refresh_token(
         &self,
-        refresh_token: &String,
+        refresh_token: &str,
         refresh_secret: &[u8],
     ) -> Result<SessionId, AuthError> {
-        let refresh_token_hash = TokenHandler::hash_token(refresh_token.as_str(), refresh_secret);
+        let refresh_token_hash = TokenHandler::hash_token(refresh_token, refresh_secret);
 
         let session = self
             .session_repo
@@ -279,7 +279,7 @@ impl AuthService {
             .token_service
             .verify_access_token(access_token, secret)
             .await
-            .map_err(|err| AuthError::Token(err))?;
+            .map_err(AuthError::Token)?;
 
         if OffsetDateTime::now_utc() > claims.exp {
             return Err(AuthError::Authentication);
@@ -350,14 +350,18 @@ impl AuthService {
         })
     }
 
-
-    pub async fn is_admin(&self, access_token: &str, access_secret : &[u8]) -> bool {
-        let claims = self.token_service
+    pub async fn is_admin(&self, access_token: &str, access_secret: &[u8]) -> bool {
+        let claims = self
+            .token_service
             .verify_access_token(access_token, access_secret)
             .await
             .map_err(AuthError::Token);
 
-       if claims.is_ok() { claims.unwrap().is_admin } else { false }
+        if let Ok(claims) = claims {
+            claims.is_admin
+        } else {
+            false
+        }
     }
 }
 

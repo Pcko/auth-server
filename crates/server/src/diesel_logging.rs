@@ -5,10 +5,10 @@ pub fn diesel_logger() -> Option<Box<dyn Instrumentation>> {
         InstrumentationEvent::StartQuery { query, .. } => {
             println!("SQL : {}", query);
         }
-        InstrumentationEvent::FinishQuery { error, .. } => {
-            if let Some(error) = error {
-                println!("Error : {}", error);
-            }
+        InstrumentationEvent::FinishQuery {
+            error: Some(error), ..
+        } => {
+            println!("Error : {}", error);
         }
         _ => {}
     }))

@@ -3,7 +3,7 @@ use crate::schema;
 use crate::schema::sessions::dsl::{sessions, token_hash, uid};
 use diesel::dsl::update;
 
-use crate::schema::sessions::{expires_at, id, last_seen_at};
+use crate::schema::sessions::{expires_at, last_seen_at};
 use diesel::prelude::*;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use diesel_async::pooled_connection::bb8::Pool;
@@ -47,10 +47,7 @@ impl SessionRepository for DieselSessionRepository {
         Ok(row.map(Into::into))
     }
 
-    async fn find_by_uid(
-        &self,
-        user_id: UserId,
-    ) -> Result<Vec<Session>, SessionRepositoryError> {
+    async fn find_by_uid(&self, user_id: UserId) -> Result<Vec<Session>, SessionRepositoryError> {
         let mut conn = self
             .pool
             .get()
@@ -62,7 +59,7 @@ impl SessionRepository for DieselSessionRepository {
             .load::<SessionRow>(&mut conn)
             .await
             .map_err(map_diesel_error)?;
-        
+
         Ok(rows.into_iter().map(Into::into).collect())
     }
 

@@ -9,8 +9,8 @@ pub enum UserType {
 impl UserType {
     pub fn as_str(&self) -> &str {
         match self {
-            UserType::Admin => &"admin",
-            UserType::Normal => &"normal",
+            UserType::Admin => "admin",
+            UserType::Normal => "normal",
         }
     }
 }

@@ -24,7 +24,7 @@ impl UserService {
             .repo
             .find_by_id(UserId::new(id))
             .await
-            .map_err(|err| UserError::Repo(err))?;
+            .map_err(UserError::Repo)?;
 
         Ok(user.unwrap())
     }

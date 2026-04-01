@@ -64,10 +64,6 @@ impl UserRepository for DieselUserRepository {
         Ok(user_row.map(Into::into))
     }
 
-    async fn exists_by_email(&self, user_email: &str) -> Result<bool, UserRepositoryError> {
-        todo!()
-    }
-
     async fn save(&self, given_user: &NewUser) -> Result<User, UserRepositoryError> {
         let mut conn = self
             .pool

@@ -21,7 +21,7 @@ async fn get_users(
 
     let response = users
         .into_iter()
-        .map(|user| UserResponseDTO::from(user))
+        .map(UserResponseDTO::from)
         .collect::<Vec<UserResponseDTO>>();
 
     Ok(Json(response))

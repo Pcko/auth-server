@@ -1,5 +1,4 @@
 use axum::extract::{ConnectInfo, FromRequestParts};
-use axum::response::IntoResponse;
 use domain::model::request_info::RequestInfo;
 use http::{HeaderMap, header, request::Parts};
 use std::{
@@ -67,15 +66,15 @@ where
     }
 }
 
-impl Into<RequestInfo> for ExtractRequestInfo {
-    fn into(self) -> RequestInfo {
+impl From<ExtractRequestInfo> for RequestInfo {
+    fn from(val: ExtractRequestInfo) -> Self {
         // from Option<IpAdrs> zu Option<String>
-        let ip = self.ip.map(|addr| addr.to_string());
+        let ip = val.ip.map(|addr| addr.to_string());
 
-        RequestInfo {
+        Self {
             ip: ip,
-            url: self.url,
-            user_agent: self.user_agent,
+            url: val.url,
+            user_agent: val.user_agent,
         }
     }
 }

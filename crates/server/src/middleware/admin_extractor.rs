@@ -30,7 +30,7 @@ where
         let access_token = cookies
             .get(ACCESS_COOKIE_KEY)
             .map(|cookie| cookie.value().to_owned())
-            .ok_or_else(|| unauthorized())?;
+            .ok_or_else(unauthorized)?;
 
         let result = app_state
             .auth_service
