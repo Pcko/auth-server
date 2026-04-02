@@ -183,6 +183,8 @@ pub fn router() -> ApiRouter<AppState> {
             "/logout",
             post_with(logout, |op| {
                 op.description("Invalidate the active session and clear auth cookies.")
+                    .security_requirement("accessCookie")
+                    .security_requirement("refreshCookie")
                     .response::<204, ()>()
             }),
         )
@@ -190,6 +192,7 @@ pub fn router() -> ApiRouter<AppState> {
             "/me",
             get_with(authenticate, |op| {
                 op.description("Validate the current access token and return the authenticated user id.")
+                    .security_requirement("accessCookie")
                     .response::<200, Json<AuthMeResponseDTO>>()
                     .response::<401, Json<ErrorBody>>()
             }),
@@ -198,6 +201,7 @@ pub fn router() -> ApiRouter<AppState> {
             "/refresh",
             post_with(refresh, |op| {
                 op.description("Refresh the current access token using the refresh cookie.")
+                    .security_requirement("refreshCookie")
                     .response::<200, ()>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<500, Json<ErrorBody>>()

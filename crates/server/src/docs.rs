@@ -1,5 +1,5 @@
 use aide::openapi::{Info, OpenApi};
-use aide::scalar::Scalar;
+use aide::swagger::Swagger;
 use axum::Extension;
 use axum::Json;
 use axum::Router;
@@ -17,6 +17,7 @@ pub fn openapi() -> OpenApi {
             version: env!("CARGO_PKG_VERSION").to_string(),
             ..Info::default()
         },
+
         ..OpenApi::default()
     }
 }
@@ -25,9 +26,18 @@ pub async fn serve_api(Extension(api): Extension<OpenApi>) -> Json<OpenApi> {
     Json(api)
 }
 
-async fn scalar_docs() -> Html<String> {
+// In Scalar cookies arent working so forget it for now
+// async fn scalar_docs() -> Html<String> {
+//     Html(
+//         Scalar::new("/openapi.json")
+//             .with_title("Central Auth Server API")
+//             .html(),
+//     )
+// }
+
+async fn swagger_docs() -> Html<String> {
     Html(
-        Scalar::new("/openapi.json")
+        Swagger::new("/openapi.json")
             .with_title("Central Auth Server API")
             .html(),
     )
@@ -39,5 +49,5 @@ where
 {
     Router::new()
         .route("/openapi.json", get(serve_api))
-        .route("/docs", get(scalar_docs))
+        .route("/docs", get(swagger_docs))
 }

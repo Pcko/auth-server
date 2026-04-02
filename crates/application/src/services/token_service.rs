@@ -8,6 +8,7 @@ use std::ops::Add;
 use std::sync::Arc;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
+use tracing::error;
 use uuid::Uuid;
 
 pub struct TokenService {
@@ -73,7 +74,10 @@ impl TokenService {
     ) -> Result<Claims, TokenError> {
         let result =
             decode::<Claims>(token, &DecodingKey::from_secret(secret), &self.validation)
-                .map_err(|_| TokenError::InvalidToken("Access Token is invalid".to_string()))?;
+                .map_err(|e| {
+                    error!(error = ?e, "Failed to decode access token");
+                    TokenError::InvalidToken("Access Token is invalid".to_string())
+                })?;
 
         let claims = result.claims;
 

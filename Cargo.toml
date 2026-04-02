@@ -34,5 +34,5 @@ http = "1.4"
 tower = "0.5"
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 secrecy = "0.10"
-aide = { version = "0.15.1", features = ["axum", "axum-json", "scalar", "http"] }
+aide = { version = "0.15.1", features = ["axum", "axum-json", "http", "swagger"] }
 schemars = { version = "0.9", features = ["uuid1"] }

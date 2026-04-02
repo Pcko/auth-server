@@ -99,6 +99,7 @@ pub async fn revoke_my_session(
 pub async fn get_all_user_sessions(
     State(state): State<AppState>,
     Path(uid): Path<Uuid>,
+    NoApi(_admin): NoApi<UserExtractor>,
 ) -> JsonResult<Vec<SessionDTO>> {
     let sessions = state
         .session_service
@@ -117,6 +118,7 @@ pub async fn get_all_user_sessions(
 pub async fn revoke_all_user_sessions(
     State(state): State<AppState>,
     Path(uid): Path<Uuid>,
+    NoApi(_admin): NoApi<UserExtractor>,
 ) -> StatusResult {
     state
         .session_service
@@ -134,6 +136,7 @@ pub fn user_session_router() -> ApiRouter<AppState> {
             "/",
             get_with(get_my_sessions, |op| {
                 op.description("List the sessions of requesting user.")
+                    .security_requirement("accessCookie")
                     .response::<200, Json<Vec<SessionDTO>>>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<500, Json<ErrorBody>>()
@@ -143,6 +146,7 @@ pub fn user_session_router() -> ApiRouter<AppState> {
             "/",
             delete_with(revoke_all_my_sessions, |op| {
                 op.description("Revoke all sessions for the requesting user.")
+                    .security_requirement("accessCookie")
                     .response::<204, ()>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<500, Json<ErrorBody>>()
@@ -152,6 +156,7 @@ pub fn user_session_router() -> ApiRouter<AppState> {
             "/{sid}",
             delete_with(revoke_my_session, |op| {
                 op.description("Revoke a single session owned by requesting user.")
+                    .security_requirement("accessCookie")
                     .response::<204, ()>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<403, Json<ErrorBody>>()
@@ -167,6 +172,7 @@ pub fn admin_session_router() -> ApiRouter<AppState> {
             "/",
             get_with(get_all_sessions, |op| {
                 op.description("List all sessions. (Admin)")
+                    .security_requirement("accessCookie")
                     .response::<200, Json<Vec<SessionDTO>>>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<403, Json<ErrorBody>>()
@@ -177,6 +183,7 @@ pub fn admin_session_router() -> ApiRouter<AppState> {
             "/{sid}",
             delete_with(revoke_session, |op| {
                 op.description("Revoke a session by id. (Admin)")
+                    .security_requirement("accessCookie")
                     .response::<204, ()>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<403, Json<ErrorBody>>()
@@ -187,6 +194,7 @@ pub fn admin_session_router() -> ApiRouter<AppState> {
             "/user/{uid}",
             get_with(get_all_user_sessions, |op| {
                 op.description("List all sessions for a specific user. (Admin)")
+                    .security_requirement("accessCookie")
                     .response::<200, Json<Vec<SessionDTO>>>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<403, Json<ErrorBody>>()
@@ -197,6 +205,7 @@ pub fn admin_session_router() -> ApiRouter<AppState> {
             "/user/{uid}",
             delete_with(revoke_all_user_sessions, |op| {
                 op.description("Revoke all sessions for a specific user. (Admin)")
+                    .security_requirement("accessCookie")
                     .response::<204, ()>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<403, Json<ErrorBody>>()

@@ -1,7 +1,9 @@
 use crate::dto::user_dto::UserResponseDTO;
 use crate::errors::api_error::ApiError;
 use crate::errors::error_body::{DocumentedApiError, ErrorBody, documented};
+use crate::middleware::admin_extractor::AdminExtractor;
 use crate::state::AppState;
+use aide::NoApi;
 use aide::axum::ApiRouter;
 use aide::axum::routing::{get_with, post_with};
 use axum::Json;
@@ -14,7 +16,10 @@ use uuid::Uuid;
 type JsonResult<T> = Result<Json<T>, DocumentedApiError>;
 type StatusResult = Result<StatusCode, DocumentedApiError>;
 
-async fn get_users(State(state): State<AppState>) -> JsonResult<Vec<UserResponseDTO>> {
+async fn get_users(
+    State(state): State<AppState>,
+    NoApi(_admin): NoApi<AdminExtractor>,
+) -> JsonResult<Vec<UserResponseDTO>> {
     let repo = DieselUserRepository::new(state.pool.clone());
 
     let users = repo
@@ -34,6 +39,7 @@ async fn get_users(State(state): State<AppState>) -> JsonResult<Vec<UserResponse
 async fn get_user(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
+    NoApi(_admin): NoApi<AdminExtractor>,
 ) -> JsonResult<UserResponseDTO> {
     let user = state
         .user_service
@@ -45,7 +51,11 @@ async fn get_user(
     Ok(Json(UserResponseDTO::from(user)))
 }
 
-async fn elevate(State(state): State<AppState>, Path(id): Path<Uuid>) -> StatusResult {
+async fn elevate(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+    NoApi(_admin): NoApi<AdminExtractor>,
+) -> StatusResult {
     let user = state
         .user_service
         .get_user(id)
@@ -69,6 +79,7 @@ pub fn router() -> ApiRouter<AppState> {
             "/",
             get_with(get_users, |op| {
                 op.description("List all users. (Admin)")
+                    .security_requirement("accessCookie")
                     .response::<200, Json<Vec<UserResponseDTO>>>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<403, Json<ErrorBody>>()
@@ -79,6 +90,7 @@ pub fn router() -> ApiRouter<AppState> {
             "/{id}",
             get_with(get_user, |op| {
                 op.description("Fetch a single user by id. (Admin)")
+                    .security_requirement("accessCookie")
                     .response::<200, Json<UserResponseDTO>>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<403, Json<ErrorBody>>()
@@ -90,6 +102,7 @@ pub fn router() -> ApiRouter<AppState> {
             "/elevate/{id}",
             post_with(elevate, |op| {
                 op.description("Grant admin rights to a user. (Admin)")
+                    .security_requirement("accessCookie")
                     .response::<202, ()>()
                     .response::<401, Json<ErrorBody>>()
                     .response::<403, Json<ErrorBody>>()
