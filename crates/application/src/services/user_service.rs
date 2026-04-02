@@ -26,12 +26,14 @@ impl UserService {
             .await
             .map_err(UserError::Repo)?;
 
-        Ok(user.unwrap())
+        user.ok_or(UserError::NotFound)
     }
 }
 
 #[derive(Debug, Error)]
 pub enum UserError {
+    #[error("user not found")]
+    NotFound,
     #[error("repository error: {0}")]
     Repo(#[from] UserRepositoryError),
     #[error("repository error: {0}")]
