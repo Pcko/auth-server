@@ -1,23 +1,28 @@
-use diesel::internal::derives::multiconnection::time::OffsetDateTime;
 use domain::model::user::User;
+use schemars::JsonSchema;
 use serde::Serialize;
-use uuid::Uuid;
+use time::format_description::well_known::Rfc3339;
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, JsonSchema)]
 pub struct UserResponseDTO {
-    pub id: Uuid,
+    pub id: String,
     pub username: String,
     pub email: String,
-    pub created_at: OffsetDateTime,
+    pub created_at: String,
 }
 
 impl From<User> for UserResponseDTO {
     fn from(user: User) -> Self {
+        let created_at = user
+            .created_at
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| user.created_at.to_string());
+
         Self {
-            id: user.uid.as_uuid(),
+            id: user.uid.as_uuid().to_string(),
             username: user.uname,
             email: user.email,
-            created_at: user.created_at,
+            created_at,
         }
     }
 }

@@ -1,17 +1,18 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct LoginDTO {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Serialize)]
-pub struct LoginResponseDTO {
-    pub success: bool,
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct AuthMeResponseDTO {
+    pub uid: String,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct LogoutDTO {
-    pub session_id: String,
+#[derive(Debug, Serialize, JsonSchema)]
+pub struct SuccessResponseDTO {
+    pub success: bool,
 }

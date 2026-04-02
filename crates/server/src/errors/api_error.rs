@@ -52,6 +52,7 @@ impl From<SessionError> for ApiError {
 impl From<UserError> for ApiError {
     fn from(error: UserError) -> Self {
         match error {
+            UserError::NotFound => ApiError::NotFound,
             UserError::Unexpected(_) | UserError::Repo(_) => {
                 ApiError::InternalServerError("Internal server error".to_string())
             }

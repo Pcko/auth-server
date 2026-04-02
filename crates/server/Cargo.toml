@@ -25,5 +25,5 @@ http.workspace = true
 tower.workspace = true
 secrecy.workspace = true
 time.workspace = true
-utoipa.workspace = true
-utoipa-swagger-ui.workspace = true
+aide.workspace = true
+schemars.workspace = true
