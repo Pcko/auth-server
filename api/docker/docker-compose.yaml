@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:16
-    container_name: auth_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -12,35 +11,35 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d auth_server" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_server"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   migrate:
+    container_name: diesel-migration
+    image: auth_server_migrate:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile
       target: builder
-    container_name: auth_server_migrate
     depends_on:
       postgres:
         condition: service_healthy
     working_dir: /app
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/auth_server
-    command: [ "diesel", "migration", "run" ]
+    command: ["diesel", "migration", "run"]
 
   app:
+    image: auth_server:latest
+    container_name: auth_server
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: auth_server_app
     depends_on:
       postgres:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     env_file:
       - ../.env
     ports:

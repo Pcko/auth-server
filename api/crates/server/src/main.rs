@@ -16,6 +16,7 @@ use server::config::AppConfig;
 use server::router::app;
 use server::state::AppState;
 use std::sync::Arc;
+use std::time::Duration;
 use tracing::info;
 use tracing_appender::rolling;
 use tracing_subscriber::EnvFilter;
@@ -32,11 +33,16 @@ async fn main() -> Result<()> {
         .with_default_directive(config.log_level.into())
         .from_env_lossy();
     init_tracing(filter);
+
     // DB init
     set_default_instrumentation(diesel_logging::diesel_logger)
         .expect("failed to set default logging instance");
     let db_config = AsyncDieselConnectionManager::<AsyncPgConnection>::new(&config.database_url);
-    let pool = Pool::builder().build(db_config).await?;
+    let pool = Pool::builder()
+        .max_size(16)
+        .connection_timeout(Duration::from_secs(5))
+        .build(db_config)
+        .await?;
     info!("Connected to DB!");
 
     // Webserver init
