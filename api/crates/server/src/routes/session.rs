@@ -39,11 +39,11 @@ pub async fn revoke_session(State(state): State<AppState>, Path(sid): Path<Uuid>
 
 pub async fn get_my_sessions(
     State(state): State<AppState>,
-    NoApi(user): NoApi<UserExtractor>,
+    NoApi(UserExtractor { user }): NoApi<UserExtractor>,
 ) -> JsonResult<Vec<SessionDTO>> {
     let result = state
         .session_service
-        .get_sessions_by_uid(user.uid)
+        .get_sessions_by_uid(user.uid.as_uuid())
         .await
         .map_err(ApiError::from)
         .map_err(documented)?;
@@ -54,11 +54,11 @@ pub async fn get_my_sessions(
 
 pub async fn revoke_all_my_sessions(
     State(state): State<AppState>,
-    NoApi(user): NoApi<UserExtractor>,
+    NoApi(UserExtractor { user }): NoApi<UserExtractor>,
 ) -> StatusResult {
     state
         .session_service
-        .delete_by_uid(user.uid)
+        .delete_by_uid(user.uid.as_uuid())
         .await
         .map_err(ApiError::from)
         .map_err(documented)?;
@@ -69,7 +69,7 @@ pub async fn revoke_all_my_sessions(
 pub async fn revoke_my_session(
     State(state): State<AppState>,
     Path(sid): Path<Uuid>,
-    NoApi(user): NoApi<UserExtractor>,
+    NoApi(UserExtractor { user }): NoApi<UserExtractor>,
 ) -> StatusResult {
     let session = state
         .session_service
@@ -82,7 +82,7 @@ pub async fn revoke_my_session(
         return Err(documented(ApiError::NotFound));
     };
 
-    if session.uid.as_uuid() != user.uid {
+    if session.uid.as_uuid() != user.uid.as_uuid() {
         return Err(documented(ApiError::Forbidden("Forbidden".to_string())));
     }
 

@@ -1,3 +1,4 @@
+use crate::dto::user_dto::UserResponseDTO;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +10,7 @@ pub struct LoginDTO {
 
 #[derive(Debug, Serialize, JsonSchema)]
 pub struct AuthMeResponseDTO {
-    pub uid: String,
+    pub user: UserResponseDTO,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]

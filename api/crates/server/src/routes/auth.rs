@@ -191,10 +191,12 @@ pub fn router() -> ApiRouter<AppState> {
         .api_route(
             "/me",
             get_with(authenticate, |op| {
-                op.description("Validate the current access token and return the authenticated user id.")
-                    .security_requirement("accessCookie")
-                    .response::<200, Json<AuthMeResponseDTO>>()
-                    .response::<401, Json<ErrorBody>>()
+                op.description(
+                    "Validate the current access token and return the authenticated user id.",
+                )
+                .security_requirement("accessCookie")
+                .response::<200, Json<UserResponseDTO>>()
+                .response::<401, Json<ErrorBody>>()
             }),
         )
         .api_route(

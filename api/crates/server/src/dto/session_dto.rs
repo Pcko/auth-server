@@ -32,11 +32,9 @@ impl From<Session> for SessionDTO {
                 .last_seen_at
                 .format(&Rfc3339)
                 .unwrap_or_else(|_| session.last_seen_at.to_string()),
-            revoked_at: session.revoked_at.map(|value| {
-                value
-                    .format(&Rfc3339)
-                    .unwrap_or_else(|_| value.to_string())
-            }),
+            revoked_at: session
+                .revoked_at
+                .map(|value| value.format(&Rfc3339).unwrap_or_else(|_| value.to_string())),
             user_agent: session.user_agent,
             ip_address: session.ip_address,
         }

@@ -34,11 +34,9 @@ impl IntoResponse for ApiError {
             ApiError::BadRequest(msg) => {
                 (StatusCode::BAD_REQUEST, Json(ErrorBody::new(msg))).into_response()
             }
-            ApiError::InternalServerError(msg) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorBody::new(msg)),
-            )
-                .into_response(),
+            ApiError::InternalServerError(msg) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorBody::new(msg))).into_response()
+            }
             ApiError::Unauthorized(msg) => {
                 (StatusCode::UNAUTHORIZED, Json(ErrorBody::new(msg))).into_response()
             }

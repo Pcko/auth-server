@@ -56,6 +56,7 @@ impl From<UserError> for ApiError {
             UserError::Unexpected(_) | UserError::Repo(_) => {
                 ApiError::InternalServerError("Internal server error".to_string())
             }
+            UserError::Validation(_) => ApiError::BadRequest("Validation error".to_string()),
         }
     }
 }
@@ -63,7 +64,9 @@ impl From<UserError> for ApiError {
 impl From<AdminError> for ApiError {
     fn from(error: AdminError) -> Self {
         match error {
-            AdminError::Unexpected => ApiError::InternalServerError("Internal server error".to_string()),
+            AdminError::Unexpected => {
+                ApiError::InternalServerError("Internal server error".to_string())
+            }
         }
     }
 }
