@@ -1,15 +1,14 @@
+use crate::dto::user_dto::UserResponseDTO;
 use crate::errors::api_error::ApiError;
 use crate::state::AppState;
 use axum::extract::{FromRef, FromRequestParts};
 use axum::http::request::Parts;
+use domain::model::user::User;
 use tower_cookies::Cookies;
-use uuid::Uuid;
 
 pub struct UserExtractor {
-    pub uid: Uuid,
+    pub user: User,
 }
-
-pub const ACCESS_COOKIE_KEY: &str = "access";
 
 impl<S> FromRequestParts<S> for UserExtractor
 where
@@ -29,16 +28,22 @@ where
 
         // get access token out of access cookie
         let token = cookies
-            .get(ACCESS_COOKIE_KEY)
+            .get("accessToken")
             .map(|cookie| cookie.value().to_owned())
             .ok_or_else(unauthorized)?;
 
         let result = app_state
             .auth_service
-            .verify_token(&token, app_state.config.access_secret.as_slice())
+            .verify_token(
+                &token,
+                app_state.config.access_secret.as_slice(),
+                &app_state.config.issuer,
+            )
             .await?;
 
+        let user = app_state.user_service.get_user(result.uid).await?;
+
         // Return data for routes
-        Ok(UserExtractor { uid: result.uid })
+        Ok(UserExtractor { user })
     }
 }

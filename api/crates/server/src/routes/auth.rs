@@ -4,6 +4,7 @@ use crate::dto::user_dto::UserResponseDTO;
 use crate::errors::api_error::ApiError;
 use crate::errors::error_body::{DocumentedApiError, ErrorBody, documented};
 use crate::middleware::request_info_extractor::ExtractRequestInfo;
+use crate::middleware::user_extractor::UserExtractor;
 use crate::state::AppState;
 use aide::NoApi;
 use aide::axum::ApiRouter;
@@ -95,23 +96,9 @@ async fn logout(State(state): State<AppState>, NoApi(cookies): NoApi<Cookies>) -
 }
 
 async fn authenticate(
-    State(state): State<AppState>,
-    NoApi(cookies): NoApi<Cookies>,
-) -> JsonResult<AuthMeResponseDTO> {
-    let cookie = cookies
-        .get("access")
-        .ok_or_else(|| documented(ApiError::Unauthorized("Unauthorized".to_string())))?;
-
-    let result = state
-        .auth_service
-        .verify_token(cookie.value(), state.config.access_secret.as_ref())
-        .await
-        .map_err(ApiError::from)
-        .map_err(documented)?;
-
-    Ok(Json(AuthMeResponseDTO {
-        uid: result.uid.to_string(),
-    }))
+    NoApi(UserExtractor { user }): NoApi<UserExtractor>,
+) -> JsonResult<UserResponseDTO> {
+    Ok(Json(user.into()))
 }
 
 async fn refresh(

@@ -50,7 +50,7 @@ pub fn app(state: AppState) -> Router {
         ));
 
     let admin_router = ApiRouter::new()
-        .nest("/users", user::router())
+        .nest("/users", user::admin_router())
         .nest("/sessions", session::admin_session_router())
         .layer(admin_layer);
 
@@ -65,6 +65,7 @@ pub fn app(state: AppState) -> Router {
         .nest("/auth", auth::router())
         .nest("/admin", admin_router)
         .nest("/sessions", user_session_router)
+        .nest("/users", user::router())
         .merge(health::router());
 
     // for OpenAPI docs

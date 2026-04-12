@@ -1,16 +1,15 @@
-use crate::dto::user_dto::UserResponseDTO;
+use crate::dto::user_dto::{UpdateUserRequest, UserResponseDTO};
 use crate::errors::api_error::ApiError;
 use crate::errors::error_body::{DocumentedApiError, ErrorBody, documented};
 use crate::middleware::admin_extractor::AdminExtractor;
+use crate::middleware::user_extractor::UserExtractor;
 use crate::state::AppState;
 use aide::NoApi;
 use aide::axum::ApiRouter;
-use aide::axum::routing::{get_with, post_with};
+use aide::axum::routing::{get_with, patch_with, post_with};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use domain::repositories::user_repository::UserRepository;
-use persistence::repositories::user_repository::DieselUserRepository;
 use uuid::Uuid;
 
 type JsonResult<T> = Result<Json<T>, DocumentedApiError>;
@@ -20,13 +19,11 @@ async fn get_users(
     State(state): State<AppState>,
     NoApi(_admin): NoApi<AdminExtractor>,
 ) -> JsonResult<Vec<UserResponseDTO>> {
-    let repo = DieselUserRepository::new(state.pool.clone());
-
-    let users = repo
-        .find_all()
+    let users = state
+        .user_service
+        .get_all_users()
         .await
-        .map_err(|_| ApiError::InternalServerError("Internal server error".to_string()))
-        .map_err(documented)?;
+        .map_err(ApiError::from)?;
 
     let response = users
         .into_iter()
@@ -34,6 +31,21 @@ async fn get_users(
         .collect::<Vec<_>>();
 
     Ok(Json(response))
+}
+
+async fn update_me(
+    State(state): State<AppState>,
+    NoApi(UserExtractor { user }): NoApi<UserExtractor>,
+    Json(dto): Json<UpdateUserRequest>,
+) -> JsonResult<UserResponseDTO> {
+    let updated = state
+        .user_service
+        .update_user(user, dto.into_command())
+        .await
+        .map_err(ApiError::from)
+        .map_err(documented)?;
+
+    Ok(Json(updated.into()))
 }
 
 async fn get_user(
@@ -73,7 +85,7 @@ async fn elevate(
     Ok(StatusCode::ACCEPTED)
 }
 
-pub fn router() -> ApiRouter<AppState> {
+pub fn admin_router() -> ApiRouter<AppState> {
     ApiRouter::new()
         .api_route(
             "/",
@@ -110,4 +122,16 @@ pub fn router() -> ApiRouter<AppState> {
                     .response::<500, Json<ErrorBody>>()
             }),
         )
+}
+
+pub fn router() -> ApiRouter<AppState> {
+    ApiRouter::new().api_route(
+        "/me",
+        patch_with(update_me, |op| {
+            op.description("Update a user.")
+                .security_requirement("accessCookie")
+                .response::<200, Json<UserResponseDTO>>()
+                .response::<500, Json<ErrorBody>>()
+        }),
+    )
 }
