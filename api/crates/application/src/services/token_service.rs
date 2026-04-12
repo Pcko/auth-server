@@ -23,9 +23,15 @@ pub struct RotatedRefreshToken {
 }
 
 impl TokenService {
-    pub fn new(session_repository: Arc<dyn SessionRepository>) -> Self {
+    pub fn new(
+        session_repository: Arc<dyn SessionRepository>,
+        access_audience: &str,
+        access_issuer: &str,
+    ) -> Self {
         let mut header = Header::new(Algorithm::HS256);
-        let validation = Validation::new(Algorithm::HS256);
+        let mut validation = Validation::new(Algorithm::HS256);
+        validation.set_audience(&[access_audience]);
+        validation.set_issuer(&[access_issuer]);
         header.typ = Some("JWT".to_string());
 
         Self {
@@ -72,12 +78,11 @@ impl TokenService {
         token: &str,
         secret: &[u8],
     ) -> Result<Claims, TokenError> {
-        let result =
-            decode::<Claims>(token, &DecodingKey::from_secret(secret), &self.validation)
-                .map_err(|e| {
-                    error!(error = ?e, "Failed to decode access token");
-                    TokenError::InvalidToken("Access Token is invalid".to_string())
-                })?;
+        let result = decode::<Claims>(token, &DecodingKey::from_secret(secret), &self.validation)
+            .map_err(|e| {
+            error!(error = ?e, "Failed to decode access token");
+            TokenError::InvalidToken("Access Token is invalid".to_string())
+        })?;
 
         let claims = result.claims;
 

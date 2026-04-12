@@ -8,25 +8,40 @@ use aide::axum::ApiRouter;
 use aide::openapi::{ApiKeyLocation, SecurityScheme};
 use aide::transform::TransformOpenApi;
 use axum::{Extension, Router, http, middleware};
+use http::{HeaderValue, Method, header};
 use tower::ServiceBuilder;
 use tower_cookies::CookieManagerLayer;
+use tower_http::cors::CorsLayer;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::sensitive_headers::SetSensitiveHeadersLayer;
 use tower_http::trace::TraceLayer;
 
 pub fn app(state: AppState) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(state.config.origin_url.parse::<HeaderValue>().unwrap())
+        .allow_methods(vec![
+            Method::GET,
+            Method::POST,
+            Method::DELETE,
+            Method::OPTIONS,
+            Method::PATCH,
+        ])
+        .allow_headers(vec![header::CONTENT_TYPE, header::AUTHORIZATION])
+        .allow_credentials(true);
+
     let infra_layer = ServiceBuilder::new()
         .layer(SetSensitiveHeadersLayer::new([
-            http::header::AUTHORIZATION,
-            http::header::COOKIE,
-            http::header::SET_COOKIE,
+            header::AUTHORIZATION,
+            header::COOKIE,
+            header::SET_COOKIE,
         ]))
         .layer(SetRequestIdLayer::x_request_id(
             tower_http::request_id::MakeRequestUuid,
         ))
         .layer(PropagateRequestIdLayer::x_request_id())
-        .layer(CookieManagerLayer::new())
         .layer(TraceLayer::new_for_http())
+        .layer(cors)
+        .layer(CookieManagerLayer::new())
         .layer(middleware::from_extractor_with_state::<ExtractRequestInfo, _>(state.clone()));
 
     let admin_layer = ServiceBuilder::new()

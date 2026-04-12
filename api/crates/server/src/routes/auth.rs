@@ -15,14 +15,12 @@ use secrecy::ExposeSecret;
 use tower_cookies::cookie::SameSite;
 use tower_cookies::cookie::time::OffsetDateTime;
 use tower_cookies::{Cookie, Cookies};
+use tracing::info;
 
 type JsonResult<T> = Result<Json<T>, DocumentedApiError>;
 type StatusResult = Result<StatusCode, DocumentedApiError>;
 
-async fn register(
-    State(state): State<AppState>,
-    Json(dto): Json<RegisterDTO>,
-) -> StatusResult {
+async fn register(State(state): State<AppState>, Json(dto): Json<RegisterDTO>) -> StatusResult {
     state
         .auth_service
         .register(dto.email, dto.username, dto.password)
@@ -39,6 +37,7 @@ async fn login(
     NoApi(cookies): NoApi<Cookies>,
     Json(dto): Json<LoginDTO>,
 ) -> JsonResult<UserResponseDTO> {
+    info!("login handler entered");
     let result = state
         .auth_service
         .login(
@@ -47,15 +46,20 @@ async fn login(
             request_info.into(),
             state.config.access_secret.as_ref(),
             state.config.refresh_secret.as_ref(),
+            &state.config.audience,
+            &state.config.issuer,
         )
         .await
         .map_err(ApiError::from)
         .map_err(documented)?;
 
-    let mut session = Cookie::new("access", result.access_token);
+    let mut session = Cookie::new("accessToken", result.access_token);
     configure_cookie(&state, result.access_expires_at, &mut session);
 
-    let mut refresh = Cookie::new("refresh", result.refresh_token.expose_secret().to_owned());
+    let mut refresh = Cookie::new(
+        "refreshToken",
+        result.refresh_token.expose_secret().to_owned(),
+    );
     configure_cookie(&state, result.refresh_expires_at, &mut refresh);
 
     cookies.add(session);
@@ -68,18 +72,18 @@ async fn logout(State(state): State<AppState>, NoApi(cookies): NoApi<Cookies>) -
     let revoke_result = state
         .auth_service
         .logout(
-            cookies.get("access").map(|c| c.value().to_string()),
+            cookies.get("accessToken").map(|c| c.value().to_string()),
             state.config.access_secret.as_ref(),
-            cookies.get("refresh").map(|c| c.value().to_string()),
+            cookies.get("refreshToken").map(|c| c.value().to_string()),
             state.config.refresh_secret.as_ref(),
         )
         .await;
 
-    let mut access_token_removal = Cookie::new("access", "");
+    let mut access_token_removal = Cookie::new("accessToken", "");
     remove_cookie(&state, &mut access_token_removal);
     cookies.remove(access_token_removal);
 
-    let mut refresh_token_removal = Cookie::new("refresh", "");
+    let mut refresh_token_removal = Cookie::new("refreshToken", "");
     remove_cookie(&state, &mut refresh_token_removal);
     cookies.remove(refresh_token_removal);
 
@@ -116,27 +120,30 @@ async fn refresh(
     NoApi(cookies): NoApi<Cookies>,
 ) -> StatusResult {
     let refresh_cookie = cookies
-        .get("refresh")
+        .get("refreshToken")
         .ok_or_else(|| documented(ApiError::Unauthorized("Unauthorized".to_string())))?;
 
     let result = state
         .auth_service
         .refresh_token(
-            request_info.url,
+            &state.config.audience,
             refresh_cookie.value(),
             state.config.refresh_secret.as_ref(),
             state.config.access_secret.as_ref(),
+            &state.config.issuer,
         )
         .await
         .map_err(ApiError::from)
         .map_err(documented)?;
 
-    let mut access_cookie = Cookie::new("access", result.access_token);
+    let mut access_cookie = Cookie::new("accessToken", result.access_token);
     configure_cookie(&state, result.access_expires_at, &mut access_cookie);
     cookies.add(access_cookie);
 
-    let mut refresh_cookie =
-        Cookie::new("refresh", result.refresh_token.expose_secret().to_owned());
+    let mut refresh_cookie = Cookie::new(
+        "refreshToken",
+        result.refresh_token.expose_secret().to_owned(),
+    );
     configure_cookie(&state, result.refresh_expires_at, &mut refresh_cookie);
     cookies.add(refresh_cookie);
 

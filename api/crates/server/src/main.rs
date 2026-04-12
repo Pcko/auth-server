@@ -57,13 +57,17 @@ fn build_app(pool: Pool<AsyncPgConnection>, config: AppConfig) -> AppState {
     let session_repo = Arc::new(DieselSessionRepository::new(pool.clone()));
     // Services
     let session_service = Arc::new(SessionService::new(session_repo.clone()));
-    let token_service = Arc::new(TokenService::new(session_repo.clone()));
+    let token_service = Arc::new(TokenService::new(
+        session_repo.clone(),
+        &config.audience,
+        &config.issuer,
+    ));
     let auth_service = Arc::new(AuthService::new(
         user_repo.clone(),
         session_repo.clone(),
         token_service.clone(),
     ));
-    let user_service = Arc::new(UserService::new(user_repo.clone()));
+    let user_service = Arc::new(UserService::new(user_repo.clone(), auth_service.clone()));
     let admin_service = Arc::new(AdminService::new(user_repo.clone()));
 
     AppState {

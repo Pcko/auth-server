@@ -42,7 +42,6 @@ pub struct RefreshResult {
     pub refresh_expires_at: OffsetDateTime,
 }
 
-const ISSUER_NAME: &str = "AUTH_SERVER";
 const ACCESS_TOKEN_DURATION: Duration = Duration::hours(1);
 const REFRESH_TOKEN_DURATION: Duration = Duration::days(30);
 
@@ -108,7 +107,10 @@ impl AuthService {
         request_info: RequestInfo,
         access_secret: &[u8],
         refresh_secret: &[u8],
+        audience: &str,
+        iss: &str,
     ) -> Result<LoginResult, AuthError> {
+        info!("login handler entered");
         Self::validate_credentials(&email, &password)?;
 
         // find User if error during search -> internal else if not a user then user with email doesn't exist
@@ -155,14 +157,15 @@ impl AuthService {
             .insert(session)
             .await
             .map_err(AuthError::SessionRepo)?;
+        info!("session created");
 
         // access token
         let (access_token, claims) = self
             .token_service
             .generate_access_token(
-                ISSUER_NAME.to_string(),
+                iss.to_string(),
                 user.uid.as_uuid(),
-                request_info.url,
+                audience.to_string(),
                 new_session.id.as_uuid(),
                 ACCESS_TOKEN_DURATION,
                 access_secret,
@@ -270,15 +273,16 @@ impl AuthService {
         Ok(session.id)
     }
 
-    #[instrument(name = "auth.verify_token", skip(self, access_token, secret))]
+    #[instrument(name = "auth.verify_token", skip(self, access_token, access_secret))]
     pub async fn verify_token(
         &self,
         access_token: &str,
-        secret: &[u8],
+        access_secret: &[u8],
+        iss: &str,
     ) -> Result<VerifyResult, AuthError> {
         let claims = self
             .token_service
-            .verify_access_token(access_token, secret)
+            .verify_access_token(access_token, access_secret)
             .await
             .map_err(AuthError::Token)?;
 
@@ -286,7 +290,7 @@ impl AuthService {
             return Err(AuthError::Authentication);
         }
 
-        if claims.iss != ISSUER_NAME {
+        if claims.iss != iss {
             return Err(AuthError::Authentication);
         }
 
@@ -301,10 +305,11 @@ impl AuthService {
     #[instrument(name = "auth.refresh_token", skip(self, refresh_token, refresh_secret))]
     pub async fn refresh_token(
         &self,
-        aud: String,
+        aud: &str,
         refresh_token: &str,
         refresh_secret: &[u8],
         access_secret: &[u8],
+        iss: &str,
     ) -> Result<RefreshResult, AuthError> {
         let hashed_token = TokenHandler::hash_token(refresh_token, refresh_secret);
 
@@ -325,9 +330,9 @@ impl AuthService {
         let (access_token, claims) = self
             .token_service
             .generate_access_token(
-                ISSUER_NAME.to_string(),
+                iss.to_string(),
                 session.uid.as_uuid(),
-                aud,
+                aud.to_string(),
                 session.id.as_uuid(),
                 ACCESS_TOKEN_DURATION,
                 access_secret,
