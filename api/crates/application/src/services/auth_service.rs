@@ -73,33 +73,33 @@ impl AuthService {
             return Err(AuthError::Validation(msg.into()));
         }
 
-        // Hash the password
+        info!("register: hashing password");
         let argon2 = Argon2::default();
         let password_hash = argon2
             .hash_password(password.as_bytes())
             .map_err(AuthError::Hash)?
             .to_string();
 
-        // Create new User
+        info!("register: password hashed");
+
         let new_row = NewUser {
             name: username,
-            email: email,
-            password_hash: password_hash,
+            email,
+            password_hash,
             role: None,
         };
 
-        let user = self
-            .user_repo
-            .save(&new_row)
-            .await
-            .map_err(AuthError::UserRepo)?;
+        info!("register: calling user_repo.save");
+        let user = self.user_repo.save(&new_row).await.map_err(|e| {
+            error!(error = ?e, "register: user_repo.save failed");
+            AuthError::UserRepo(e)
+        })?;
 
-        info!("User {0}: {1} created", user.uid.to_string(), user.uname);
+        info!(user_id = %user.uid, username = %user.uname, "register: user created");
         Ok(user)
     }
 
-    #[instrument(name = "auth.login", skip(self, password, access_secret, refresh_secret), fields(email = %email
-    ))]
+    #[instrument(name = "auth.login", skip(self, password, access_secret, refresh_secret), fields(email = %email))]
     pub async fn login(
         &self,
         email: String,
@@ -122,11 +122,12 @@ impl AuthService {
             .ok_or(AuthError::InvalidCredentials(
                 "invalid email or password".to_string(),
             ))?;
+        info!("user loaded");
 
         // parse the password from db
+        let pw = &user.password_hash;
         let argon2 = Argon2::default();
-        let parsed_pw_hash =
-            PasswordHash::new(&user.password_hash).map_err(AuthError::HashParse)?;
+        let parsed_pw_hash = PasswordHash::new(pw).map_err(AuthError::HashParse)?;
 
         // comparison
         argon2
@@ -135,6 +136,7 @@ impl AuthService {
                 error!("User:{} Invalid password", user.uid.to_string());
                 AuthError::InvalidCredentials("invalid email or password".to_string())
             })?;
+        info!("password verified");
 
         // refresh token
         let refresh_token = self.token_service.generate_refresh_token();
@@ -187,7 +189,7 @@ impl AuthService {
         })
     }
 
-    fn validate_credentials(email: &str, password: &str) -> Result<(), AuthError> {
+    pub fn validate_credentials(email: &str, password: &str) -> Result<(), AuthError> {
         if email.trim().is_empty() {
             return Err(AuthError::Validation("Email is empty".into()));
         }
@@ -368,6 +370,16 @@ impl AuthService {
         } else {
             false
         }
+    }
+
+    pub fn hash_password(&self, password: &str) -> Result<String, AuthError> {
+        let argon2 = Argon2::default();
+        let password_hash = argon2
+            .hash_password(password.as_bytes())
+            .map_err(AuthError::Hash)?
+            .to_string();
+
+        Ok(password_hash)
     }
 }
 
