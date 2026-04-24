@@ -33,4 +33,6 @@ pub trait SessionRepository: Send + Sync {
         &self,
         session: Session,
     ) -> Result<Session, SessionRepositoryError>;
+    
+    async fn revoke_session(&self, sid: SessionId) -> Result<(), SessionRepositoryError>;
 }

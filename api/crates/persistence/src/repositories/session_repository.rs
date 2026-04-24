@@ -3,10 +3,11 @@ use crate::schema;
 use crate::schema::sessions::dsl::{sessions, token_hash, uid};
 use diesel::dsl::update;
 
-use crate::schema::sessions::{expires_at, last_seen_at};
+use crate::schema::sessions::{expires_at, last_seen_at, revoked_at};
 use diesel::prelude::*;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
-use diesel_async::pooled_connection::bb8::Pool;
+use diesel_async::pooled_connection::bb8::{Pool, PooledConnection};
+use diesel_async::pooled_connection::{AsyncDieselConnectionManager, bb8};
 use diesel_async::{AsyncPgConnection, RunQueryDsl};
 use domain::model::session::{NewSession, Session, SessionId};
 use domain::model::user::UserId;
@@ -170,7 +171,7 @@ impl SessionRepository for DieselSessionRepository {
             .await
             .map_err(map_diesel_error)?;
 
-        return Ok(rows.into_iter().map(Into::into).collect());
+        Ok(rows.into_iter().map(Into::into).collect())
     }
 
     async fn update_refresh_token_data(
@@ -194,6 +195,22 @@ impl SessionRepository for DieselSessionRepository {
             .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
 
         Ok(updated_row.into())
+    }
+
+    async fn revoke_session(&self, sid: SessionId) -> Result<(), SessionRepositoryError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| SessionRepositoryError::Unexpected(e.to_string()))?;
+
+        update(sessions.find(sid.as_uuid()))
+            .set(revoked_at.eq(OffsetDateTime::now_utc()))
+            .execute(&mut conn)
+            .await
+            .map_err(map_diesel_error)?;
+
+        Ok(())
     }
 }
 
