@@ -27,7 +27,6 @@ export const load: PageLoad = async ({fetch}) => {
 
     const sessions: Session[] = await res.json();
     sessions.map((session: Session) => {
-        console.log(session);
         session.created_at = new Date(session.created_at);
         session.expires_at = new Date(session.expires_at);
         session.last_seen_at = new Date(session.last_seen_at)

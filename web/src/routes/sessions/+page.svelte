@@ -1,11 +1,13 @@
 <script lang="ts">
     import type {PageData} from './$types';
     import type {Session} from '$lib/types/session';
+    import {PUBLIC_SERVER_URL} from "$env/static/public";
 
     let {data}: { data: PageData } = $props();
 
     let sessions = $state<Session[]>(data.sessions ?? []);
     let searchQuery = $state('');
+    let error = $state<string | null>(null);
 
     let sortedSessions = $derived(
         [...sessions].sort(
@@ -49,6 +51,25 @@
 
         return `${browser} · ${os}`;
     }
+
+    async function revokeSession(session: Session) {
+        try {
+            const response = await fetch(`${PUBLIC_SERVER_URL}/sessions/${session.id}`, {
+                method: 'DELETE',
+                credentials: 'include',
+            });
+
+            if (response.status === 204) {
+                sessions = sessions.filter(s => s.id !== session.id);
+                return;
+            }
+
+            error = `Error: ${response.statusText}`;
+        } catch (err) {
+            console.error(err);
+            error = "Network Error. Please try again later!";
+        }
+    }
 </script>
 
 <div class="flex w-full justify-center p-4 md:p-6">
@@ -63,14 +84,20 @@
         </div>
 
         <div class="overflow-hidden border bg-card">
-             <!--TODO implement Search/>-->
-            <div class="max-w-md mx-auto my-3">
+            <!--TODO implement Search/>-->
+            <div class="max-w-md mx-auto my-3 bg-background">
                 <label for="search" class="block mb-2.5 text-sm font-medium text-heading sr-only ">Search...</label>
                 <div class="relative">
-                    <div class="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
-                        <svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24"><path stroke="currentColor" stroke-linecap="round" stroke-width="2" d="m21 21-3.5-3.5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/></svg>
+                    <div class="absolute inset-y-0 inset-s-0 flex items-center ps-3 pointer-events-none">
+                        <svg class="w-4 h-4 text-body" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24"
+                             height="24" fill="none" viewBox="0 0 24 24">
+                            <path stroke="currentColor" stroke-linecap="round" stroke-width="2"
+                                  d="m21 21-3.5-3.5M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>
+                        </svg>
                     </div>
-                    <input value={searchQuery} type="search" id="search" class="block w-full p-3 ps-9 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand shadow-xs placeholder:text-body" placeholder="Search" required />
+                    <input value={searchQuery} type="search" id="search"
+                           class="block w-full p-3 ps-9 bg-neutral-secondary-medium border border-default-medium text-heading text-sm rounded-base focus:ring-brand focus:border-brand shadow-xs placeholder:text-body"
+                           placeholder="Search" required/>
                 </div>
             </div>
 
@@ -92,7 +119,7 @@
                                     </p>
                                 </div>
 
-                                <div class="grid gap-1 text-sm text-muted-foreground">
+                                <div class="grid gap-1 text-sm text-muted-foreground pl-2">
                                     <p><span class="font-medium text-foreground">Session:</span> {shortId(session.id)}
                                     </p>
                                     <p><span class="font-medium text-foreground">User:</span> {shortId(session.uid)}</p>
@@ -113,15 +140,16 @@
                             <div class="flex shrink-0 items-center gap-2">
                                 <button
                                         type="button"
-                                        class="rounded-md border px-3 py-2 text-sm hover:bg-accent"
+                                        class="rounded-none border px-3 py-2 text-sm bg-background hover:bg-accent"
                                 >
                                     View
                                 </button>
 
                                 {#if status === 'active'}
                                     <button
+                                            onclick={() => revokeSession(session)}
                                             type="button"
-                                            class="rounded-md border px-3 py-2 text-sm hover:bg-accent"
+                                            class="rounded-none border px-3 py-2 text-sm bg-background hover:bg-accent"
                                     >
                                         Revoke
                                     </button>
