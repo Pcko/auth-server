@@ -17,6 +17,7 @@ use tower_cookies::cookie::SameSite;
 use tower_cookies::cookie::time::OffsetDateTime;
 use tower_cookies::{Cookie, Cookies};
 use tracing::info;
+use crate::auth_constants::auth_constants::{ACCESS_COOKIE_NAME, REFRESH_COOKIE_NAME};
 
 type JsonResult<T> = Result<Json<T>, DocumentedApiError>;
 type StatusResult = Result<StatusCode, DocumentedApiError>;
@@ -54,11 +55,11 @@ async fn login(
         .map_err(ApiError::from)
         .map_err(documented)?;
 
-    let mut session = Cookie::new("accessToken", result.access_token);
+    let mut session = Cookie::new(ACCESS_COOKIE_NAME, result.access_token);
     configure_cookie(&state, result.access_expires_at, &mut session);
 
     let mut refresh = Cookie::new(
-        "refreshToken",
+        REFRESH_COOKIE_NAME,
         result.refresh_token.expose_secret().to_owned(),
     );
     configure_cookie(&state, result.refresh_expires_at, &mut refresh);
@@ -73,18 +74,18 @@ async fn logout(State(state): State<AppState>, NoApi(cookies): NoApi<Cookies>) -
     let revoke_result = state
         .auth_service
         .logout(
-            cookies.get("accessToken").map(|c| c.value().to_string()),
+            cookies.get(ACCESS_COOKIE_NAME).map(|c| c.value().to_string()),
             state.config.access_secret.as_ref(),
-            cookies.get("refreshToken").map(|c| c.value().to_string()),
+            cookies.get(REFRESH_COOKIE_NAME).map(|c| c.value().to_string()),
             state.config.refresh_secret.as_ref(),
         )
         .await;
 
-    let mut access_token_removal = Cookie::new("accessToken", "");
+    let mut access_token_removal = Cookie::new(ACCESS_COOKIE_NAME, "");
     remove_cookie(&state, &mut access_token_removal);
     cookies.remove(access_token_removal);
 
-    let mut refresh_token_removal = Cookie::new("refreshToken", "");
+    let mut refresh_token_removal = Cookie::new(REFRESH_COOKIE_NAME, "");
     remove_cookie(&state, &mut refresh_token_removal);
     cookies.remove(refresh_token_removal);
 
@@ -123,12 +124,12 @@ async fn refresh(
         .map_err(ApiError::from)
         .map_err(documented)?;
 
-    let mut access_cookie = Cookie::new("accessToken", result.access_token);
+    let mut access_cookie = Cookie::new(ACCESS_COOKIE_NAME, result.access_token);
     configure_cookie(&state, result.access_expires_at, &mut access_cookie);
     cookies.add(access_cookie);
 
     let mut refresh_cookie = Cookie::new(
-        "refreshToken",
+        REFRESH_COOKIE_NAME,
         result.refresh_token.expose_secret().to_owned(),
     );
     configure_cookie(&state, result.refresh_expires_at, &mut refresh_cookie);

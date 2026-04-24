@@ -5,6 +5,7 @@ use axum::extract::{FromRef, FromRequestParts};
 use axum::http::request::Parts;
 use domain::model::user::User;
 use tower_cookies::Cookies;
+use crate::auth_constants::auth_constants::ACCESS_COOKIE_NAME;
 
 pub struct UserExtractor {
     pub user: User,
@@ -28,7 +29,7 @@ where
 
         // get access token out of access cookie
         let token = cookies
-            .get("accessToken")
+            .get(ACCESS_COOKIE_NAME)
             .map(|cookie| cookie.value().to_owned())
             .ok_or_else(unauthorized)?;
 
