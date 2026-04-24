@@ -26,10 +26,14 @@ pub async fn get_all_sessions(State(state): State<AppState>) -> JsonResult<Vec<S
     Ok(Json(dtos))
 }
 
-pub async fn revoke_session(State(state): State<AppState>, Path(sid): Path<Uuid>) -> StatusResult {
+pub async fn revoke_session(
+    State(state): State<AppState>,
+    NoApi(UserExtractor { user }): NoApi<UserExtractor>,
+    Path(sid): Path<Uuid>,
+) -> StatusResult {
     state
         .session_service
-        .delete(sid)
+        .revoke_session(sid, user)
         .await
         .map_err(ApiError::from)
         .map_err(documented)?;
@@ -88,7 +92,7 @@ pub async fn revoke_my_session(
 
     state
         .session_service
-        .delete(sid)
+        .revoke_session(sid, user)
         .await
         .map_err(ApiError::from)
         .map_err(documented)?;

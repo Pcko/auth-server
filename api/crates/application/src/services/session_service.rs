@@ -1,5 +1,5 @@
 use domain::model::session::{Session, SessionId};
-use domain::model::user::UserId;
+use domain::model::user::{User, UserId};
 use domain::repositories::session_repository::{SessionRepository, SessionRepositoryError};
 use std::sync::Arc;
 use thiserror::Error;
@@ -28,7 +28,21 @@ impl SessionService {
             .map_err(SessionError::from)
     }
 
-    pub async fn delete(&self, sid: Uuid) -> Result<(), SessionError> {
+    pub async fn revoke_session(&self, sid: Uuid, user: User) -> Result<(), SessionError> {
+        let session = self
+            .session_repo
+            .find_by_id(SessionId::new(sid))
+            .await
+            .map_err(SessionError::from)?;
+
+        if let Some(session) = session {
+            if (session.uid != user.uid) {
+                return Err(SessionError::Forbidden);
+            }
+        }else { 
+            return Err(SessionError::NotFound);
+        }
+
         self.session_repo
             .delete_by_id(SessionId::new(sid))
             .await
