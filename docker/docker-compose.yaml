@@ -20,8 +20,8 @@ services:
     container_name: diesel-migration
     image: auth_server_migrate:latest
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../api
+      dockerfile: ../docker/Dockerfile
       target: builder
     depends_on:
       postgres:
@@ -35,13 +35,15 @@ services:
     image: auth_server:latest
     container_name: auth_server
     build:
-      context: ..
-      dockerfile: docker/Dockerfile
+      context: ../api
+      dockerfile: ../docker/Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     env_file:
-      - ../.env
+      - ../api/.env
     ports:
       - "3000:3000"
     restart: unless-stopped
