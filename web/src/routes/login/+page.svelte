@@ -5,6 +5,7 @@
 
 <script lang="ts">
     import {PUBLIC_SERVER_URL} from "$env/static/public";
+    import ThemeButton from "$lib/components/ui/theme-button/theme-button.svelte";
 
     let email = $state('');
     let password = $state('');
@@ -33,7 +34,7 @@
             }
 
             error = `Error: ${response.statusText}`;
-        } catch (err) {
+        } catch {
             error = 'Network Error. Please try again Later';
         } finally {
             loading = false;
@@ -68,8 +69,9 @@
                         placeholder="••••••••"
                 />
             </div>
+
             {#if error}
-                <p class="text-sm text-destructive" role="alert">
+                <p class="text-sm text-destructive transition-transform" role="alert">
                     {error}
                 </p>
             {/if}
@@ -89,3 +91,6 @@
         </p>
     </div>
 </div>
+
+<!--Theme Switch Button -->
+<ThemeButton/>
