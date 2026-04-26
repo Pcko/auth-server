@@ -1,5 +1,5 @@
 <script lang="ts">
-    import type {PageData} from './$types';
+    import type {PageData} from '../../../../.svelte-kit/types/src/routes';
     import type {Session} from '$lib/types/session';
     import {PUBLIC_SERVER_URL} from "$env/static/public";
 

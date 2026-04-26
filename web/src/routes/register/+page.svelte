@@ -15,7 +15,9 @@
     let error = $state<string | null>(null);
 
 
-    async function submit() {
+    async function submit(event : SubmitEvent) {
+        event.preventDefault();
+
         try {
             loading = true;
             error = null;
@@ -31,7 +33,9 @@
 
             if (response.status === 201) {
                 await goto('/login');
+                return;
             }
+
             error = `Error: ${response.statusText}`;
         } catch {
             error = 'Network Error. Please try again Later';

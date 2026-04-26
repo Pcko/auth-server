@@ -1,0 +1,279 @@
+diff --git a/.gitignore b/.gitignore
+index 4d951cd..e372181 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -3,3 +3,4 @@
+ web/.env
+ web/.svelte-kit/
+ web/package-lock.json
++*.zip
+diff --git a/api/crates/server/src/dto/mod.rs b/api/crates/server/src/dto/mod.rs
+index 609c6dd..7e86f8f 100644
+--- a/api/crates/server/src/dto/mod.rs
++++ b/api/crates/server/src/dto/mod.rs
+@@ -2,3 +2,4 @@ pub mod auth_dto;
+ pub mod register_dto;
+ pub mod session_dto;
+ pub mod user_dto;
++pub mod oauth_dto;
+diff --git a/api/crates/server/src/dto/oauth_dto.rs b/api/crates/server/src/dto/oauth_dto.rs
+index e69de29..f2d400b 100644
+--- a/api/crates/server/src/dto/oauth_dto.rs
++++ b/api/crates/server/src/dto/oauth_dto.rs
+@@ -0,0 +1,22 @@
++use serde::{Deserialize, Serialize};
++use uuid::Uuid;
++
++#[derive(Debug, Deserialize)]
++pub struct TokenRequest {
++    pub grant_type: String,
++    pub code: String,
++    pub client_id: String,
++    pub redirect_uri: String,
++}
++
++#[derive(Debug, Serialize)]
++pub struct TokenResponse {
++    pub app_session_token: String,
++    pub user: TokenUser,
++}
++
++#[derive(Debug, Serialize)]
++pub struct TokenUser {
++    pub id: Uuid,
++    pub email: String,
++}
+\ No newline at end of file
+diff --git a/api/crates/server/src/routes/mod.rs b/api/crates/server/src/routes/mod.rs
+index ce8a4a0..8f72696 100644
+--- a/api/crates/server/src/routes/mod.rs
++++ b/api/crates/server/src/routes/mod.rs
+@@ -3,3 +3,4 @@ pub mod auth;
+ pub mod health;
+ pub mod session;
+ pub mod user;
++pub mod oauth;
+diff --git a/api/crates/server/src/routes/oauth.rs b/api/crates/server/src/routes/oauth.rs
+index e69de29..7584096 100644
+--- a/api/crates/server/src/routes/oauth.rs
++++ b/api/crates/server/src/routes/oauth.rs
+@@ -0,0 +1,24 @@
++use crate::dto::oauth_dto::{TokenRequest, TokenResponse};
++use crate::errors::api_error::ApiError;
++use crate::state::AppState;
++use aide::axum::ApiRouter;
++use axum::Json;
++use axum::extract::State;
++
++pub fn authorize(
++    State(state): State<AppState>,
++    Json(req): Json<TokenRequest>,
++) -> Result<Json<TokenResponse>, ApiError> {
++    if req.grant_type != "authorization_code" {
++        return Err(ApiError::BadRequest("unsupported grant_type".to_string()));
++    }
++
++
++}
++
++pub fn router() -> ApiRouter<AppState> {
++    ApiRouter::new().api_route("", |op| {
++        op.description("Creates one-time code for Client sessions.")
++            .response::<200, TokenResponse>()
++    })
++}
+diff --git a/info.md b/info.md
+index 6940d05..fbd01e9 100644
+--- a/info.md
++++ b/info.md
+@@ -14,4 +14,18 @@ change flow to
+ 
+ session: 
+ restrict to:
+-- one per page 
+\ No newline at end of file
++- one per page 
++
++IDP Structure:
++IdP frontend /login:
++- no fixed client_id
++- reads client_id from query params
++- validates it with Rust backend
++- submits it back during login
++
++Actual apps:
++- each app has its own PUBLIC_CLIENT_ID env var
++
++Rust IdP:
++- stores all allowed clients and redirect URIs
++- rejects unknown client_id or invalid redirect_uri
+\ No newline at end of file
+diff --git a/web/src/hooks.server.ts b/web/src/hooks.server.ts
+index 536e388..e69de29 100644
+--- a/web/src/hooks.server.ts
++++ b/web/src/hooks.server.ts
+@@ -1,12 +0,0 @@
+-// import { redirect, type Handle } from '@sveltejs/kit';
+-//
+-// const origins: string[] = JSON.parse(process.env.ORIGIN_PREFIXES ??'[]');
+-// const protectedPrefixes = [..origins];
+-//
+-// export const handle : Handle = async ({event, resolve}) => {
+-// 	const session = event.cookies.get('session');
+-//
+-// 	if(event.url.toString() in protectedPrefixes){
+-//
+-// 	}
+-// }
+\ No newline at end of file
+diff --git a/web/src/lib/server/auth-config.ts b/web/src/lib/server/auth-config.ts
+index e69de29..d1c2709 100644
+--- a/web/src/lib/server/auth-config.ts
++++ b/web/src/lib/server/auth-config.ts
+@@ -0,0 +1,11 @@
++import {
++	PUBLIC_APP_URL,
++	PUBLIC_SERVER_URL,
++} from '$env/static/public';
++
++export const authConfig = {
++	app_url: PUBLIC_APP_URL,
++	idp_url: PUBLIC_SERVER_URL,
++	redirect_uri: `${PUBLIC_APP_URL}/auth/callback`,
++	session_duration_minutes: 60 * 24 * 7
++};
+\ No newline at end of file
+diff --git a/web/src/routes/(protected)/+layout.server.ts b/web/src/routes/(protected)/+layout.server.ts
+index e44aee3..5bf6df6 100644
+--- a/web/src/routes/(protected)/+layout.server.ts
++++ b/web/src/routes/(protected)/+layout.server.ts
+@@ -1,9 +1,10 @@
+ import { redirect } from '@sveltejs/kit';
+ import { randomBytes } from 'node:crypto';
++import {PUBLIC_APP_URL,PUBLIC_IS_DEV} from '$env/static/public';
++import type { LayoutServerLoad } from './$types';
++import { clearImmediate } from 'node:timers';
+ 
+-const IDP_URL = 'http://localhost:3000';
+ const APP_URL = 'http://localhost:5173';
+-const CLIENT_ID = 'server-one-app';
+ 
+ function randomState() {
+ 	return randomBytes(32).toString('base64url');
+@@ -13,17 +14,26 @@ export const load: LayoutServerLoad = async ({ cookies, url }) => {
+ 	const appSession = cookies.get('app_session');
+ 
+ 	if (appSession) {
++		// validate appSession
+ 		return {};
+ 	}
+ 
++	// state for login-flow protection.
+ 	const state = randomState();
++	// the url the user originally wanted
+ 	const returnTo = url.pathname + url.search;
++	// where the IdP should send the user after login
+ 	const redirectUri = `${APP_URL}/auth/callback`;
++	const clientId = url.searchParams.get('client_id');
++
++	if(!clientId) {
++		throw new Error('Used Client is invalid!');
++	}
+ 
+ 	cookies.set('oauth_state', state, {
+ 		path: '/',
+ 		httpOnly: true,
+-		secure: false, // true in production
++		secure: !!PUBLIC_IS_DEV,
+ 		sameSite: 'lax',
+ 		maxAge: 60 * 10
+ 	});
+@@ -31,13 +41,13 @@ export const load: LayoutServerLoad = async ({ cookies, url }) => {
+ 	cookies.set('return_to', returnTo, {
+ 		path: '/',
+ 		httpOnly: true,
+-		secure: false, // true in production
++		secure: !!PUBLIC_IS_DEV,
+ 		sameSite: 'lax',
+ 		maxAge: 60 * 10
+ 	});
+ 
+-	const authUrl = new URL('/login', IDP_URL);
+-	authUrl.searchParams.set('client_id', CLIENT_ID);
++	const authUrl = new URL('/login', PUBLIC_APP_URL);
++	authUrl.searchParams.set('client_id', clientId);
+ 	authUrl.searchParams.set('redirect_uri', redirectUri);
+ 	authUrl.searchParams.set('state', state);
+ 
+diff --git a/web/src/routes/auth/callback/+server.ts b/web/src/routes/auth/callback/+server.ts
+index e69de29..383c85b 100644
+--- a/web/src/routes/auth/callback/+server.ts
++++ b/web/src/routes/auth/callback/+server.ts
+@@ -0,0 +1,48 @@
++import { redirect } from '@sveltejs/kit';
++import type { RequestHandler } from './$types';
++import { authConfig } from '$lib/server/auth-config';
++
++export const GET: RequestHandler = async ({ url, cookies, fetch }) => {
++	const code = url.searchParams.get('code');
++	const state = url.searchParams.get('state');
++	const clientId = url.searchParams.get('client_id');
++
++	const expectedState = cookies.get('oauth_state');
++	const returnTo = cookies.get('return_to') ?? '/';
++
++	if (!code || !state || !expectedState || state !== expectedState) {
++		throw redirect(303, '/login-error');
++	}
++
++	const res = await fetch(`${authConfig.idp_url}/oauth/token`, {
++		method: 'POST',
++		headers: {
++			'content-type': 'application/json'
++		},
++		body: JSON.stringify({
++			grant_type: 'authorization_code',
++			code,
++			client_id: clientId,
++			redirect_uri: authConfig.redirect_uri
++		})
++	});
++
++	if (!res.ok) {
++		throw redirect(303, '/login-error');
++	}
++
++	const body = await res.json();
++
++	cookies.set('app_session', body.app_session_token, {
++		path: '/',
++		httpOnly: true,
++		secure: false,
++		sameSite: 'lax',
++		maxAge: 60 * authConfig.session_duration_minutes
++	});
++
++	cookies.delete('oauth_state', { path: '/' });
++	cookies.delete('return_to', { path: '/' });
++
++	throw redirect(303, returnTo);
++};
+\ No newline at end of file
+diff --git a/web/vite.config.ts b/web/vite.config.ts
+index 56f40c7..f3434d7 100644
+--- a/web/vite.config.ts
++++ b/web/vite.config.ts
+@@ -2,4 +2,11 @@ import tailwindcss from '@tailwindcss/vite';
+ import { sveltekit } from '@sveltejs/kit/vite';
+ import { defineConfig } from 'vite';
+ 
+-export default defineConfig({ plugins: [tailwindcss(), sveltekit()] });
++export default defineConfig({
++	plugins: [tailwindcss(), sveltekit()] ,
++	server: {
++		host: '0.0.0.0',
++		port: 5173,
++		strictPort: true
++	}
++});
+\ No newline at end of file

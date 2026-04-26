@@ -6,13 +6,16 @@
 <script lang="ts">
     import {PUBLIC_SERVER_URL} from "$env/static/public";
     import ThemeButton from "$lib/components/ui/theme-button/theme-button.svelte";
+    import {goto} from "$app/navigation";
+    import {page} from "$app/state";
 
     let email = $state('');
     let password = $state('');
     let loading = $state(false)
     let error = $state<string | null>(null);
 
-    async function submit() {
+    async function submit(event : SubmitEvent) {
+        event.preventDefault();
         error = null;
         loading = true;
 
@@ -25,11 +28,10 @@
                     'Content-Type': 'application/json'
                 }
             })
-            console.log(response)
 
             if (response.status === 200) {
-                const data = await response.json();
-                console.log(data)
+                const returnTo = page.url.searchParams.get('return_to') ?? '/account';
+                await goto(returnTo);
                 return;
             }
 

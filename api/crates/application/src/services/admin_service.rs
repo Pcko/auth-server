@@ -12,10 +12,7 @@ impl AdminService {
     }
 
     pub async fn elevate_user(&self, user: User) -> Result<User, AdminError> {
-        self.user_repo
-            .update(user)
-            .await
-            .map_err(|_| AdminError::Unexpected)
+        unimplemented!()
     }
 }
 

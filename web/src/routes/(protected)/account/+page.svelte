@@ -3,8 +3,8 @@
 </svelte:head>
 
 <script lang="ts">
-    import { Button } from '$lib/components/ui/button/index.js';
-    import type { PageData } from './$types';
+    import { Button } from '$lib/components/ui/button';
+    import type { PageData } from '../../../../.svelte-kit/types/src/routes';
     import { PUBLIC_SERVER_URL } from '$env/static/public';
 
     let { data }: { data: PageData } = $props();
